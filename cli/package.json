@@ -1,0 +1,27 @@
+{
+  "name": "agentteam",
+  "version": "0.1.0",
+  "description": "AI development team CLI: role-based agents working on a file-driven workflow inside an existing project",
+  "type": "module",
+  "bin": {
+    "agentteam": "bin/agentteam.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "templates"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "sync": "node scripts/sync-templates.js",
+    "pretest": "npm run sync",
+    "test": "node --test",
+    "prepack": "npm run sync"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.40.0"
+  }
+}
