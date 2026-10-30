@@ -8,6 +8,8 @@
 //   loginCommand 可直接由 AgentTeam 启动的登录命令（仅已核对为非交互入口的 agent 才有）
 //   apiKeyEnv  个人 API key 对应的环境变量名
 //   tokenEnv   可用于非交互认证的 token 环境变量名（如 GitHub token）
+//   models     可选模型（来自官方文档中出现的名称；用户也可手动输入其他名称）
+//   efforts    可选思考强度；为空表示该 agent 不支持按次设置，选择时跳过此步
 export const AGENTS = [
   {
     id: 'claude',
@@ -18,6 +20,10 @@ export const AGENTS = [
     login: '运行 claude auth login，或在 claude 内输入 /login',
     loginCommand: 'claude auth login',
     apiKeyEnv: ['ANTHROPIC_API_KEY'],
+    // Claude 5 家族模型 ID。可选模型以 claude 实际支持的为准。
+    models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'],
+    // claude --effort 的取值（官方 CLI 参考）；可选值依模型而定。
+    efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     verified: true,
     source: 'https://code.claude.com/docs/en/setup, https://code.claude.com/docs/en/authentication',
   },
@@ -29,6 +35,10 @@ export const AGENTS = [
     install: 'npm install -g @openai/codex',
     login: '运行 codex，选择 Sign in with ChatGPT',
     apiKeyEnv: [],
+    // 文档中出现的模型名；可选值依模型与客户端而定。
+    models: ['gpt-5.1-codex-max', 'gpt-6.1-sol'],
+    // 通过 codex exec -c model_reasoning_effort=<值> 传入（官方配置参考）。
+    efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     verified: true,
     source: 'https://github.com/openai/codex（README）',
   },
@@ -40,6 +50,9 @@ export const AGENTS = [
     install: 'npm install -g @google/gemini-cli',
     login: '首次运行 gemini，选择 Sign in with Google',
     apiKeyEnv: ['GEMINI_API_KEY'],
+    models: ['gemini-2.5-pro', 'gemini-3-pro-preview', 'gemini-3-flash-preview', 'gemini-3.1-pro-preview'],
+    // 思考强度只能写在用户全局的 settings.json（modelConfigs），没有按次参数，因此不提供。
+    efforts: [],
     verified: true,
     source: 'https://geminicli.com/docs/get-started/installation.md, https://geminicli.com/docs/get-started/authentication.md',
   },
@@ -120,6 +133,8 @@ export const AGENTS = [
     baseUrl: 'https://api.deepseek.com',
     apiKeyEnv: ['DEEPSEEK_API_KEY'],
     models: ['deepseek-flash', 'deepseek-v4-pro'],
+    // off 表示关闭思考（thinking disabled）；其他值写入 reasoning_effort（官方思考模式文档）。
+    efforts: ['off', 'low', 'high', 'max'],
     verified: true,
     source: 'https://api-docs.deepseek.com/',
   },
@@ -127,6 +142,11 @@ export const AGENTS = [
 
 export function listAgents() {
   return AGENTS;
+}
+
+// 该 agent 是否支持按次设置思考强度。
+export function supportsEffort(agent) {
+  return (agent.efforts?.length ?? 0) > 0;
 }
 
 export function getAgent(id) {

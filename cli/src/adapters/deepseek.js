@@ -8,7 +8,14 @@ import { runProcess } from './process.js';
 // run_command 只能执行 team/allowed-commands.json 中整条匹配的命令。
 // 工具执行出错时，错误文本作为工具结果返回给模型，让它自己修正，不中断整个任务。
 const BASE_URL = 'https://api.deepseek.com';
-const MODEL = 'deepseek-v4-pro';
+const DEFAULT_MODEL = 'deepseek-v4-pro';
+
+// 思考强度：off 关闭思考；其他值开启思考并写入 reasoning_effort。未指定时不发送，使用服务端默认。
+function thinkingFields(effort) {
+  if (!effort) return {};
+  if (effort === 'off') return { thinking: { type: 'disabled' } };
+  return { thinking: { type: 'enabled' }, reasoning_effort: effort };
+}
 const MAX_STEPS = 60;
 const MAX_OUTPUT = 20000;
 
@@ -106,11 +113,11 @@ async function runTool(name, args, { root, cwd, allowedCommands, timeoutMs }) {
   }
 }
 
-async function chat({ apiKey, messages, tools, fetchImpl, signal }) {
+async function chat({ apiKey, model, effort, messages, tools, fetchImpl, signal }) {
   const res = await fetchImpl(`${BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: MODEL, messages, tools }),
+    body: JSON.stringify({ model, messages, tools, ...thinkingFields(effort) }),
     signal,
   });
   if (!res.ok) throw new Error(`DeepSeek 返回 HTTP ${res.status}：${(await res.text()).slice(0, 300)}`);
@@ -128,9 +135,10 @@ export const deepseekAdapter = {
   id: 'deepseek',
   canEditFiles: true,
 
-  async run({ prompt, cwd, credential = {}, timeoutMs, allowedCommands = [], fetchImpl = fetch }) {
+  async run({ prompt, cwd, model, effort, credential = {}, timeoutMs, allowedCommands = [], fetchImpl = fetch }) {
     const apiKey = credential.apiKey || process.env.DEEPSEEK_API_KEY;
-    if (!apiKey) return failure('缺少 DeepSeek API key：请运行 agentteam auth deepseek --from-env');
+    if (!apiKey) return failure('缺少 DeepSeek API key：请运行 agentteam auth deepseek');
+    const chosenModel = model || DEFAULT_MODEL;
 
     const deadline = Date.now() + timeoutMs;
     const tools = buildTools(allowedCommands);
@@ -144,6 +152,8 @@ export const deepseekAdapter = {
 
         const message = await chat({
           apiKey,
+          model: chosenModel,
+          effort,
           messages,
           tools,
           fetchImpl,

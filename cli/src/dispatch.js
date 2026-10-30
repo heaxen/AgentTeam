@@ -104,7 +104,7 @@ async function readRequired(file, message) {
   }
 }
 
-function formatLog({ taskId, role, agentId, method, startedAt, endedAt, result, changed, prompt }) {
+function formatLog({ taskId, role, agentId, model, effort, method, startedAt, endedAt, result, changed, prompt }) {
   const list = changed.length ? changed.map((f) => `  - ${f}`).join('\n') : '  - 无';
   const outcome = result.ok ? '成功' : `失败：${result.error}`;
   return [
@@ -113,6 +113,8 @@ function formatLog({ taskId, role, agentId, method, startedAt, endedAt, result, 
     `- 任务：${taskId}`,
     `- 角色：${role}`,
     `- agent：${agentId}（认证方式：${method}）`,
+    `- 模型：${model ?? '未指定，使用 agent 默认模型'}`,
+    `- 思考强度：${effort ?? '未指定，使用 agent 默认'}`,
     `- 开始：${startedAt.toISOString()}`,
     `- 结束：${endedAt.toISOString()}`,
     `- 退出码：${result.exitCode ?? '无'}`,
@@ -161,7 +163,7 @@ export async function dispatchTask({
   );
 
   const assignments = await resolveAssignments(root);
-  const agentId = assignments[role];
+  const { agent: agentId, model, effort } = assignments[role];
   const agent = getAgent(agentId);
   const adapter = getAdapter(agentId);
 
@@ -171,11 +173,11 @@ export async function dispatchTask({
 
   const allowedCommands = await loadAllowedCommands(root);
   const prompt = buildPrompt({ role, taskId, taskText, roleText });
-  emit('dispatch.start', { task: taskId, role, agent: agentId, method: credential.method });
+  emit('dispatch.start', { task: taskId, role, agent: agentId, model, effort, method: credential.method });
 
   const before = await snapshot(root);
   const startedAt = new Date();
-  const result = await adapter.run({ prompt, cwd: root, credential, timeoutMs, allowedCommands });
+  const result = await adapter.run({ prompt, cwd: root, model, effort, credential, timeoutMs, allowedCommands });
   const endedAt = new Date();
   const changed = diffSnapshots(before, await snapshot(root));
 
@@ -184,7 +186,7 @@ export async function dispatchTask({
   await mkdir(join(root, 'team', 'runs'), { recursive: true });
   await writeFile(
     logPath,
-    formatLog({ taskId, role, agentId, method: credential.method, startedAt, endedAt, result, changed, prompt }),
+    formatLog({ taskId, role, agentId, model, effort, method: credential.method, startedAt, endedAt, result, changed, prompt }),
     'utf8',
   );
 

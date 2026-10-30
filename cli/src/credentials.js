@@ -1,9 +1,11 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { CONFIG_DIR, CONFIG_FILE } from './config.js';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-// 凭证单独存放，不与 config.json 混在一起，避免 `config show` 误打印。
+// 凭证单独存放在用户目录下，不写入项目，避免被提交或被对话记录带出。
 // 文件只保存在用户目录，不进入项目仓库。
+// 用户级目录 ~/.agentteam，凭证不进入项目仓库。
+export const CONFIG_DIR = join(homedir(), '.agentteam');
 export const CREDENTIALS_FILE = join(CONFIG_DIR, 'credentials.json');
 
 export async function loadCredentials(file = CREDENTIALS_FILE) {

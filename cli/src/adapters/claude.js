@@ -13,9 +13,10 @@ const SUBSCRIPTION_ENV_TO_CLEAR = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'];
 
 // allowedCommands 中的每条命令放行两种写法：完全相同，以及带参数（如 npm test --watch=false）。
 // 官方 --allowedTools 的写法为 "Bash(git *)"，这里的模式都由白名单校验后才拼接。
-export function buildCommand({ model, allowedCommands = [] } = {}) {
+export function buildCommand({ model, effort, allowedCommands = [] } = {}) {
   const parts = ['claude', '-p', '--output-format', 'json', '--permission-mode', 'acceptEdits'];
   if (model) parts.push('--model', assertSafeToken(model, 'model'));
+  if (effort) parts.push('--effort', assertSafeToken(effort, 'effort'));
   if (allowedCommands.length) {
     const patterns = allowedCommands.flatMap((c) => {
       const cmd = assertAllowedCommand(c);
@@ -42,7 +43,7 @@ export const claudeAdapter = {
   id: 'claude',
   canEditFiles: true,
 
-  async run({ prompt, cwd, model, credential = {}, timeoutMs, allowedCommands = [] }) {
+  async run({ prompt, cwd, model, effort, credential = {}, timeoutMs, allowedCommands = [] }) {
     const { code, stdout, stderr, timedOut } = await runProcess({
       command: buildCommand({ model, allowedCommands }),
       cwd,

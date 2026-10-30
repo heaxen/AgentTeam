@@ -8,9 +8,11 @@ import { runProcess, assertSafeToken, quotePath, toRunResult } from './process.j
 // 只支持订阅（ChatGPT 登录）。codex exec 的最终回复写入 -o 指定的文件，从那里读取正文。
 // 提示词从 stdin 读取（末尾的 - 表示读 stdin）。
 // --skip-git-repo-check：项目不一定是 git 仓库，不能因此拒绝执行。
-export function buildCommand({ model, outputFile } = {}) {
+export function buildCommand({ model, effort, outputFile } = {}) {
   const parts = ['codex', 'exec', '--skip-git-repo-check', '-s', 'workspace-write', '-o', quotePath(outputFile, '输出文件')];
   if (model) parts.push('-m', assertSafeToken(model, 'model'));
+  // 思考强度通过配置覆盖项传入（codex 的 -c key=value）。
+  if (effort) parts.push('-c', `model_reasoning_effort=${assertSafeToken(effort, 'effort')}`);
   parts.push('-');
   return parts.join(' ');
 }
@@ -19,11 +21,11 @@ export const codexAdapter = {
   id: 'codex',
   canEditFiles: true,
 
-  async run({ prompt, cwd, model, timeoutMs }) {
+  async run({ prompt, cwd, model, effort, timeoutMs }) {
     const outputFile = join(tmpdir(), `agentteam-codex-${randomUUID()}.txt`);
     try {
       const proc = await runProcess({
-        command: buildCommand({ model, outputFile }),
+        command: buildCommand({ model, effort, outputFile }),
         cwd,
         env: process.env,
         input: prompt,

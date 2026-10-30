@@ -19,17 +19,17 @@ async function tempDir() {
 test('未分配的角色默认由 claude 执行', async () => {
   const root = await tempDir();
   const resolved = await resolveAssignments(root);
-  for (const role of ROLES) assert.equal(resolved[role], DEFAULT_AGENT);
+  for (const role of ROLES) assert.deepEqual(resolved[role], { agent: DEFAULT_AGENT, model: null, effort: null });
 });
 
 test('指定单个角色后写入 team/assignments.json，其他角色不变', async () => {
   const root = await tempDir();
   await assignRole(root, 'frontend-dev', 'codex');
   const resolved = await resolveAssignments(root);
-  assert.equal(resolved['frontend-dev'], 'codex');
-  assert.equal(resolved['backend-dev'], DEFAULT_AGENT);
+  assert.equal(resolved['frontend-dev'].agent, 'codex');
+  assert.equal(resolved['backend-dev'].agent, DEFAULT_AGENT);
   const raw = JSON.parse(await readFile(join(root, 'team', 'assignments.json'), 'utf8'));
-  assert.equal(raw.assignments['frontend-dev'], 'codex');
+  assert.deepEqual(raw.assignments['frontend-dev'], { agent: 'codex', model: null, effort: null });
 });
 
 test('未知角色或未知 agent 直接报错，且不写文件', async () => {
@@ -43,7 +43,7 @@ test('--all 把全部角色指定为同一个 agent', async () => {
   const root = await tempDir();
   await assignAll(root, 'pi');
   const resolved = await resolveAssignments(root);
-  for (const role of ROLES) assert.equal(resolved[role], 'pi');
+  for (const role of ROLES) assert.equal(resolved[role].agent, 'pi');
 });
 
 test('凭证保存在指定文件，且只合并目标 agent 的字段', async () => {
