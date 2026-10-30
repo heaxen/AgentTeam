@@ -15,14 +15,11 @@ const RETRY_WORDS = ['重试', '继续'];
 const CANCEL_WORDS = ['取消'];
 const NEW_WORDS = ['新需求', 'new'];
 // 进行中的需求：只能继续或取消，其他输入都不会当作新需求。
-const ACTIVE_STAGES = ['arch_review', 'failed'];
+const ACTIVE_STAGES = ['arch_review', 'failed', 'paused'];
 
 export const ROLE_NAMES = {
-  pm: '项目经理',
-  'req-analyst': '需求分析',
-  prototype: '原型设计',
+  'req-analyst': '需求与原型',
   architect: '架构师',
-  'ui-dev': 'UI 开发',
   'frontend-dev': '前端开发',
   'backend-dev': '后端开发',
   qa: '测试',
@@ -34,9 +31,29 @@ export const STAGE_TEXT = {
   delivered: '已交付，输入"新需求"开始下一个',
   closed: '已取消，输入"新需求"开始下一个',
   failed: '步骤失败，回复"重试"',
+  paused: '已暂停，回复"继续"接着做',
 };
 
 const defaultDeps = { dispatch: dispatchTask };
+
+// 暂停请求：执行中按 Esc / Ctrl+C 时置位。不中断正在运行的角色，只在它结束后、下一步开始前停下。
+let pausing = false;
+
+// 返回是否为本次首次请求（用于提示文字）。
+export function requestPause() {
+  const first = !pausing;
+  pausing = true;
+  return first;
+}
+
+function pauseRequested() {
+  return pausing;
+}
+
+const PAUSE_TEXT = {
+  architecture: '已暂停（需求分析已完成，方案尚未出）。回复"继续"开始做方案；如需订正需求，直接输入修正后的需求内容。要取消请回复"取消"。',
+  build: '已暂停（已完成的角色不会重做）。回复"继续"从下一个角色接着做；要取消请回复"取消"。',
+};
 
 // awaitingNew：取消或交付后输入过"新需求"，下一条输入即为新需求。
 function emptyState() {
@@ -92,7 +109,7 @@ async function exists(path) {
   }
 }
 
-// 把角色的工作写成任务卡（第一版由 CLI 生成，之后可交给 PM 角色生成）。
+// 把角色的工作写成任务卡（由 CLI 生成）。
 async function writeCard(root, spec) {
   const taskId = await nextId(root, join('team', 'tasks'), 'T');
   const lines = [
@@ -113,6 +130,12 @@ async function writeCard(root, spec) {
   return taskId;
 }
 
+// agent 回复的开头几十个字，用于说明失败原因；没有回复时不显示。
+function replyExcerpt(text) {
+  const flat = (text ?? '').replace(/\s+/g, ' ').trim();
+  return flat ? `。agent 说明：${flat.slice(0, 160)}` : '';
+}
+
 // 派发一个角色，并检查它是否真的交付了清单中的文件（以文件为准，不以汇报为准）。
 async function runRole(root, deps, progress, spec) {
   progress(`进度：${ROLE_NAMES[spec.role]}`);
@@ -131,24 +154,39 @@ async function runRole(root, deps, progress, spec) {
     if (!(await exists(join(root, out)))) missing.push(out);
   }
   if (missing.length) {
-    return { ok: false, error: `${ROLE_NAMES[spec.role]}没有生成：${missing.join('、')}`, log: result.log };
+    // 没有生成文件时，agent 通常已经在回复里说明了原因（如权限不足），把它带给用户。
+    return { ok: false, error: `${ROLE_NAMES[spec.role]}没有生成：${missing.join('、')}${replyExcerpt(result.text)}`, log: result.log };
   }
   return { ok: true, log: result.log };
 }
 
-// 从架构摘要中读取方案字母，例如 "## 方案 A：Go + Vue"。
-export function parseOptions(summary) {
-  return [...summary.matchAll(/^## 方案 ([A-C])/gm)].map((m) => m[1]);
+// 方案标题的几种写法（架构师可能用标题，也可能用加粗列表）：
+//   ## 方案 A：Go + Vue      ### 方案A · Go + Vue      - **A · Go + Vue**      - **方案 A：Go + Vue**
+const PLAN_LINE = /^(?:#{1,4}\s*方案\s*([A-C])|\s*[-*]\s*\*\*\s*(?:方案\s*)?([A-C]))\s*(?:[：:·.、\-—]\s*)?(.*?)(?:\*\*)?\s*$/;
+
+// 从摘要中解析出方案（同一字母只取第一次出现），例如 {letter: 'A', title: 'Go + Vue'}。
+export function parsePlans(summary) {
+  const plans = [];
+  for (const line of summary.split(/\r?\n/)) {
+    const m = PLAN_LINE.exec(line);
+    if (!m) continue;
+    const letter = m[1] ?? m[2];
+    if (plans.some((p) => p.letter === letter)) continue;
+    plans.push({ letter, title: m[3].trim() || `方案 ${letter}` });
+  }
+  return plans;
 }
 
-// 方案字母与标题，例如 {letter: 'A', title: 'Go + Vue'}。arch 由调用方传入（状态可能尚未落盘）。
+// 从架构摘要中读取方案字母，例如 "## 方案 A：Go + Vue"。
+export function parseOptions(summary) {
+  return parsePlans(summary).map((p) => p.letter);
+}
+
+// 方案字母与标题。arch 由调用方传入（状态可能尚未落盘）。
 export async function planOptions(root, arch) {
   if (!arch) return [];
   const summary = await readFile(join(root, 'docs', 'architecture', `${arch}-summary.md`), 'utf8');
-  return [...summary.matchAll(/^## 方案 ([A-C])[：:]?[ \t]*(.*)$/gm)].map((m) => ({
-    letter: m[1],
-    title: m[2].trim() || `方案 ${m[1]}`,
-  }));
+  return parsePlans(summary);
 }
 
 async function doRequirement(root, state, deps, progress, feedback) {
@@ -187,11 +225,21 @@ async function doArchitecture(root, state, deps, progress, feedback) {
   });
   if (!result.ok) return result;
 
-  const summary = await readFile(join(root, outs[1]), 'utf8');
-  if (parseOptions(summary).length < 1) {
-    return { ok: false, error: `摘要中至少需要一个方案，格式为"## 方案 A：……"（见 ${outs[1]}）`, log: result.log };
+  const check = await checkPlans(root, state);
+  return check.ok ? result : { ...check, log: result.log };
+}
+
+// 检查摘要里是否有可选方案。失败时步骤记为 plans：用户修正摘要后回复"重试"，只重新检查，不重新派发架构师。
+async function checkPlans(root, state) {
+  const file = `docs/architecture/${state.arch}-summary.md`;
+  let summary = '';
+  try {
+    summary = await readFile(join(root, file), 'utf8');
+  } catch {
+    // 摘要不存在：和没有方案一样处理
   }
-  return result;
+  if (parsePlans(summary).length >= 1) return { ok: true, log: null };
+  return { ok: false, step: 'plans', error: `摘要中至少需要一个方案，格式为"## 方案 A · 名称"（见 ${file}）`, log: null };
 }
 
 async function doBuild(root, state, deps, progress) {
@@ -207,6 +255,7 @@ async function doBuild(root, state, deps, progress) {
 
   for (const role of BUILD_ORDER) {
     if (state.buildDone.includes(role)) continue;
+    if (pauseRequested()) return { ok: true, paused: true };
     const spec = specs[role];
     const result = await runRole(root, deps, progress, {
       role,
@@ -220,13 +269,16 @@ async function doBuild(root, state, deps, progress) {
     });
     if (!result.ok) return result;
     state.buildDone.push(role);
+    // 每个角色完成后立即落盘：中途强退也不会丢掉已完成的角色。
+    await saveState(root, state);
   }
 
+  if (pauseRequested()) return { ok: true, paused: true };
   const deliveryOut = `docs/delivery/DELIVERY-${n}.md`;
   return runRole(root, deps, progress, {
-    role: 'pm',
+    role: 'qa',
     title: `交付报告 DELIVERY-${n}`,
-    goal: `按 prompts/pm.md 第七节，写面向用户的交付报告 ${deliveryOut}`,
+    goal: `基于需求与测试报告，写面向真实用户的交付报告 ${deliveryOut}（大白话，结构见团队公约第 13.2 节）。如实写结论：全部做到写"需求已完成"，否则写"部分完成"并列出未完成的条目；不要因为门禁记录不全而拒绝写报告`,
     scope: `只写 ${deliveryOut}`,
     notDo: '不写内部角色细节与门禁编号到报告正文',
     stack: '不涉及（交付阶段）',
@@ -247,21 +299,35 @@ function failureText(result) {
 }
 
 // 执行某一步，并根据结果决定下一个阶段。需求分析完成后直接进入方案阶段，不再等待确认。
+// 暂停：记下下一步要从哪里开始，回复"继续"即从这里接着做。
+function pauseAt(state, step) {
+  state.stage = 'paused';
+  state.pending = { step, feedback: null };
+  return { text: PAUSE_TEXT[step] };
+}
+
 async function runStep(root, state, deps, progress, step, feedback) {
+  // 执行前落盘（如已选方案、需求编号），中途强退后仍能从这里续上。
+  await saveState(root, state);
   let result;
   if (step === 'requirement') result = await doRequirement(root, state, deps, progress, feedback);
   else if (step === 'architecture') result = await doArchitecture(root, state, deps, progress, feedback);
+  else if (step === 'plans') result = await checkPlans(root, state);
   else result = await doBuild(root, state, deps, progress);
 
   if (!result.ok) {
     state.stage = 'failed';
-    state.pending = { step, feedback: feedback ?? null };
+    state.pending = { step: result.step ?? step, feedback: feedback ?? null };
     return { text: failureText(result) };
   }
+  if (result.paused) return pauseAt(state, 'build');
 
   state.pending = null;
-  if (step === 'requirement') return runStep(root, state, deps, progress, 'architecture');
-  if (step === 'architecture') {
+  if (step === 'requirement') {
+    if (pauseRequested()) return pauseAt(state, 'architecture');
+    return runStep(root, state, deps, progress, 'architecture');
+  }
+  if (step === 'architecture' || step === 'plans') {
     state.stage = 'arch_review';
     return { text: await planText(root, state) };
   }
@@ -287,6 +353,8 @@ async function route(root, state, input, deps, progress) {
     return { text: `当前需求「${state.request}」尚未完成。回复"重试"或"继续"接着做；要取消请回复"取消"。` };
   }
 
+  if (state.stage === 'paused') return routePaused(root, state, input, deps, progress);
+
   if (NEW_WORDS.includes(word)) {
     state.awaitingNew = true;
     return { text: '请输入新需求内容。' };
@@ -294,6 +362,18 @@ async function route(root, state, input, deps, progress) {
   if (state.stage === 'idle' || state.awaitingNew) return startRequirement(root, state, deps, progress, input);
   if (state.stage === 'delivered') return { text: '本需求已交付。输入"新需求"或"new"后，再写新的需求。' };
   return { text: '当前没有进行中的需求。输入"新需求"或"new"后，再写新的需求。' };
+}
+
+// 暂停中：回复"继续"接着做；需求分析完成、方案未出时，其他文字是订正后的需求，重新分析同一个需求。
+// 方案阶段之后的暂停只接受"继续"，避免把文字误当成新需求或讨论。
+async function routePaused(root, state, input, deps, progress) {
+  const { step, feedback } = state.pending;
+  if (RETRY_WORDS.includes(input)) return runStep(root, state, deps, progress, step, feedback);
+  if (step !== 'architecture' || NEW_WORDS.includes(input.toLowerCase())) {
+    return { text: `当前需求「${state.request}」已暂停。回复"继续"接着做；要取消请回复"取消"。` };
+  }
+  state.request = input;
+  return runStep(root, state, deps, progress, 'requirement');
 }
 
 async function cancel(state) {
@@ -335,10 +415,12 @@ async function routeArchReview(root, state, input, deps, progress) {
 // 用户每说一句话，调用一次。返回给界面的文字。
 export async function handleMessage({ root, text, deps = defaultDeps, onProgress = () => {} }) {
   const input = text.trim();
+  // 上一次的暂停请求只对上一次执行有效，这次执行从干净的状态开始。
+  pausing = false;
   const state = await loadState(root);
   await record(root, '你', input);
   const result = await route(root, state, input, deps, onProgress);
-  await record(root, 'PM', result.text);
+  await record(root, '团队', result.text);
   await saveState(root, state);
   return { text: result.text, stage: state.stage };
 }

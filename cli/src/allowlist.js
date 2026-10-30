@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-// 允许 agent 执行的验证命令（如 npm test），由用户或 PM 维护：team/allowed-commands.json
+// 允许 agent 执行的验证命令（如 npm test），由用户维护：team/allowed-commands.json
 // 文件不存在时视为没有任何允许的命令。只放整条命令，执行时必须整条匹配，不接受额外参数或拼接。
 export const ALLOWLIST_FILE = join('team', 'allowed-commands.json');
 

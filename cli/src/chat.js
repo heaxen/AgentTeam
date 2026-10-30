@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { handleMessage, currentStage, planOptions } from './workflow.js';
+import { handleMessage, currentStage, planOptions, requestPause } from './workflow.js';
 import { ROLES, resolveAssignments } from './assign.js';
 import { listAgents } from './agents.js';
-import { loadCredentials, isAuthenticated } from './credentials.js';
+import { loadCredentials, isAuthenticated, CONFIG_DIR } from './credentials.js';
 import { hasAdapter } from './adapters/index.js';
 import { runAuth } from './auth.js';
 import { roleRows, formatRoles } from './status.js';
@@ -21,8 +21,11 @@ export const CHAT_HELP = `直接输入需求，团队会开始分析并列出方
   上下键 + 回车 / 序号     选择方案（方案阶段）；也可以输入字母，如 A
   其他文字                 对方案提讨论意见，不会当作新需求
   重试 / 继续              上一步失败后，修正原因再重试
-  取消                     取消当前需求（也可以按 Esc 或 Ctrl+C，输入框有字时先清空）
+  取消                     取消当前需求（输入框有字时，Esc 或 Ctrl+C 先清空）
+  Esc / Ctrl+C（执行中）    请求暂停：当前角色结束后停下；回复"继续"接着做，连按两次 Ctrl+C 强制退出
   新需求 / new             取消或交付后，再输入这两个词，下一条输入即为新需求
+  ↑ / ↓                    翻看之前输入过的内容（历史保存在 ~/.agentteam/history）
+  Tab                      补全斜杠命令、角色名和 agent 名
 
 设置（以 / 开头）：
   /team                    查看每个角色的 agent、模型与思考强度
@@ -34,6 +37,25 @@ export const CHAT_HELP = `直接输入需求，团队会开始分析并列出方
   /effort <角色>           只为角色重新选择思考强度
   /help                    显示本说明
   /退出  或  exit          结束对话`;
+
+// Tab 补全：斜杠命令名、角色名、agent 名。返回完整的候选行（补全后的整行文字）。
+const SLASH_COMMANDS = ['/help', '/team', '/agents', '/auth', '/assign', '/model', '/effort', '/退出'];
+export function completeChatInput(text, { roles = ROLES, agents = listAgents().map((a) => a.id) } = {}) {
+  if (!text.startsWith('/')) return [];
+  const words = text.split(' ');
+  const word = words[words.length - 1];
+  const done = words.slice(0, -1);
+  const pick = (list) => list.filter((w) => w.startsWith(word)).map((w) => [...done, w].join(' '));
+  if (words.length === 1) return SLASH_COMMANDS.filter((c) => c.startsWith(word));
+  const [cmd] = words;
+  if (cmd === '/auth') return words.length === 2 ? pick(agents) : [];
+  if (cmd === '/model' || cmd === '/effort') return words.length === 2 ? pick(roles) : [];
+  if (cmd === '/assign') {
+    if (words.length === 2) return pick([...roles, 'all']);
+    if (words.length === 3) return pick(agents);
+  }
+  return [];
+}
 
 const ASSIGN_USAGE = '用法：/assign <角色> <agent>，或 /assign all <agent>。角色见 /team。';
 
@@ -132,7 +154,14 @@ async function gitBranch(root) {
 }
 
 export async function runChat({ root }) {
-  const prompt = createPrompt();
+  // 执行中按 Esc / Ctrl+C：请求暂停，当前角色结束后停下。
+  const prompt = createPrompt({
+    historyFile: join(CONFIG_DIR, 'history'),
+    onInterrupt: () =>
+      requestPause()
+        ? '已请求暂停：当前角色结束后停下，回复"继续"接着做。'
+        : '已请求暂停，等当前角色结束。',
+  });
   const print = (text) => prompt.print(text);
   print('AgentTeam 对话已开始。输入 /help 查看用法。');
 
@@ -151,7 +180,7 @@ export async function runChat({ root }) {
   try {
     for (;;) {
       prompt.setStatus(await statusBar(root));
-      const line = await prompt.line('', { cancelable: true });
+      const line = await prompt.line('', { cancelable: true, remember: true, completer: completeChatInput });
       if (line === null) break; // 输入结束（如管道关闭）
       const text = line.trim();
       if (!text) continue;
@@ -175,7 +204,7 @@ export async function runChat({ root }) {
         }
         // 方案阶段且终端支持选择列表：用上下键或序号选择；按 Esc 跳过，改为直接输入。
         if (result.stage !== 'arch_review' || !prompt.select) {
-          print(`\nPM> ${result.text}\n`);
+          print(`\n${result.text}\n`);
           break;
         }
         const { arch } = await currentStage(root);
@@ -185,7 +214,7 @@ export async function runChat({ root }) {
           labels: plans.map((p) => `${p.letter}. ${p.title}`),
         });
         if (index === null) {
-          print(`\nPM> ${result.text}\n`);
+          print(`\n${result.text}\n`);
           break;
         }
         next = plans[index].letter;

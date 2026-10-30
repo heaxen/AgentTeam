@@ -15,8 +15,8 @@ export function chooseUi(input, env = process.env) {
   return 'tui';
 }
 
-export function createPrompt({ input = process.stdin, output = process.stdout } = {}) {
-  if (chooseUi(input) === 'tui') return createTerminalPrompt({ input, output });
+export function createPrompt({ input = process.stdin, output = process.stdout, onInterrupt, historyFile } = {}) {
+  if (chooseUi(input) === 'tui') return createTerminalPrompt({ input, output, onInterrupt, historyFile });
 
   let muted = false;
   const screen = new Writable({
@@ -62,8 +62,8 @@ export function createPrompt({ input = process.stdin, output = process.stdout } 
   };
 }
 
-function createTerminalPrompt({ input, output }) {
-  const screen = createScreen({ input, output });
+function createTerminalPrompt({ input, output, onInterrupt, historyFile }) {
+  const screen = createScreen({ input, output, onInterrupt, historyFile });
   screen.start();
   return {
     line: (question, options) => screen.line(question, options),

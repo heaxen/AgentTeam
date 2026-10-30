@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runChatCommand } from '../src/chat.js';
+import { runChatCommand, completeChatInput } from '../src/chat.js';
 
 async function tmp(name) {
   return mkdtemp(join(tmpdir(), `agentteam-${name}-`));
@@ -79,7 +79,6 @@ test('/assign all：全部角色使用同一个 agent 与所选模型', async ()
   assert.equal(reply, '配置已保存。');
   const saved = await readAssignments(root);
   assert.equal(saved.assignments['qa'].agent, 'gemini');
-  assert.equal(saved.assignments['pm'].agent, 'gemini');
 });
 
 test('/model：选择模型（claude 第 2 项为 claude-opus-5-5），思考强度选 agent 默认', async () => {
@@ -166,4 +165,15 @@ test('/help 包含设置命令与角色列表；未知命令有提示', async ()
   assert.match(help, /\/effort <角色>/);
   assert.match(help, /backend-dev/);
   assert.match(await runChatCommand(root, '/foo'), /未知命令：\/foo/);
+});
+
+test('Tab 补全：斜杠命令、角色名、agent 名', () => {
+  const opts = { roles: ['backend-dev', 'qa'], agents: ['claude', 'codex'] };
+  assert.deepEqual(completeChatInput('/a', opts), ['/agents', '/auth', '/assign'].filter((c) => c.startsWith('/a')));
+  assert.deepEqual(completeChatInput('/assign ', opts), ['/assign backend-dev', '/assign qa', '/assign all']);
+  assert.deepEqual(completeChatInput('/assign b', opts), ['/assign backend-dev']);
+  assert.deepEqual(completeChatInput('/assign backend-dev c', opts), ['/assign backend-dev claude', '/assign backend-dev codex']);
+  assert.deepEqual(completeChatInput('/auth co', opts), ['/auth codex']);
+  assert.deepEqual(completeChatInput('/model q', opts), ['/model qa']);
+  assert.deepEqual(completeChatInput('普通需求', opts), []);
 });

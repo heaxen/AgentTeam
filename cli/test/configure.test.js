@@ -115,7 +115,7 @@ test('链式配置：deepseek 思考强度 2 = off（关闭思考）', async () 
     root,
     prompt: scripted(['1', '2']),
     log,
-    role: 'pm',
+    role: 'qa',
     agentId: 'deepseek',
     authFn: authOk,
   });

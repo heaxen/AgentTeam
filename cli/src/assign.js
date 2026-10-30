@@ -3,7 +3,7 @@ import { join, dirname } from 'node:path';
 import { AGENTS, getAgent, supportsEffort } from './agents.js';
 
 // 团队角色，与公约第 2.1 节的角色一致。
-export const ROLES = ['pm', 'req-analyst', 'prototype', 'architect', 'ui-dev', 'frontend-dev', 'backend-dev', 'qa'];
+export const ROLES = ['req-analyst', 'architect', 'frontend-dev', 'backend-dev', 'qa'];
 
 // 没有指定时，角色默认由 claude 执行，模型与思考强度用 agent 自己的默认值。
 export const DEFAULT_AGENT = 'claude';

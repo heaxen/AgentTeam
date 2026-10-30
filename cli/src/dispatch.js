@@ -128,7 +128,7 @@ function formatLog({ taskId, role, agentId, model, effort, method, startedAt, en
     `- 退出码：${result.exitCode ?? '无'}`,
     `- 超时：${result.timedOut ? '是' : '否'}`,
     `- 结果：${outcome}`,
-    '- 改动文件（派发前后对比，供 PM 判断是否越界）：',
+    '- 改动文件（派发前后对比，供审查是否越界）：',
     list,
     '',
     '## 提示词',
@@ -163,7 +163,7 @@ export async function dispatchTask({
 
   const taskText = await readRequired(
     join(root, 'team', 'tasks', `${taskId}.md`),
-    `任务卡 team/tasks/${taskId}.md 不存在，请先由 PM 创建`,
+    `任务卡 team/tasks/${taskId}.md 不存在，请先创建`,
   );
   const roleText = await readRequired(roleFile(role), `角色说明书 ${role} 缺失，请重新安装 agentteam`);
 
@@ -182,7 +182,8 @@ export async function dispatchTask({
 
   const before = await snapshot(root);
   const startedAt = new Date();
-  const result = await adapter.run({ prompt, cwd: root, model, effort, credential, timeoutMs, allowedCommands });
+  // 团队公约与角色说明书在 CLI 安装目录里，不在项目目录内，需要单独授权读取。
+  const result = await adapter.run({ prompt, cwd: root, model, effort, credential, timeoutMs, allowedCommands, addDirs: [TEMPLATES] });
   const endedAt = new Date();
   const changed = diffSnapshots(before, await snapshot(root));
 

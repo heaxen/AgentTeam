@@ -94,3 +94,9 @@ test('runProcess：超时后终止并标记 timedOut', async () => {
   assert.equal(result.ok, false);
   assert.match(result.error, /超时/);
 });
+
+test('claude：可以授权读取项目之外的目录（团队公约所在的安装目录）', () => {
+  const cmd = claudeCommand({ addDirs: ['C:/Users/22432/AgentTeam/cli/templates'] });
+  assert.match(cmd, /--add-dir "C:\/Users\/22432\/AgentTeam\/cli\/templates"/);
+  assert.doesNotMatch(claudeCommand({}), /--add-dir/);
+});

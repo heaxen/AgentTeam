@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { handleMessage, loadState, parseOptions, planOptions } from '../src/workflow.js';
+import { handleMessage, loadState, parseOptions, parsePlans, planOptions, requestPause } from '../src/workflow.js';
 
 async function project() {
   const root = await mkdtemp(join(tmpdir(), 'agentteam-flow-'));
@@ -66,7 +66,7 @@ test('完整主线：需求 → 方案（自动列出）→ 选 B → 执行后�
 
   const r2 = await say(root, deps, '2');
   assert.equal(r2.stage, 'delivered');
-  assert.deepEqual(fake.calls, ['req-analyst', 'architect', 'backend-dev', 'frontend-dev', 'qa', 'pm']);
+  assert.deepEqual(fake.calls, ['req-analyst', 'architect', 'backend-dev', 'frontend-dev', 'qa', 'qa']);
 
   const delivery = await readFile(join(root, 'docs', 'delivery', 'DELIVERY-001.md'), 'utf8');
   assert.match(delivery, /DELIVERY-001/);
@@ -240,6 +240,162 @@ test('对话记录落盘：用户与团队的每条消息都写入 team/conversa
   const log = await readFile(join(root, 'team', 'conversation.md'), 'utf8');
   assert.match(log, /\*\*你\*\*/);
   assert.match(log, /做一个报表/);
-  assert.match(log, /\*\*PM\*\*/);
+  assert.match(log, /\*\*团队\*\*/);
 });
 
+
+test('执行中请求暂停：当前角色结束后停下，回复"继续"从下一个角色接着做，已完成的角色不重做', async () => {
+  const root = await project();
+  const fake = fakeDispatch();
+  let asked = false;
+  const deps = {
+    dispatch: async (args) => {
+      const result = await fake.dispatch(args);
+      if (args.role === 'backend-dev' && !asked) {
+        asked = true;
+        requestPause();
+      }
+      return result;
+    },
+  };
+  await say(root, deps, '做一个报表');
+  const paused = await say(root, deps, 'A');
+  assert.equal(paused.stage, 'paused');
+  assert.match(paused.text, /已暂停/);
+  assert.equal(fake.calls.includes('frontend-dev'), false, '暂停后不再开始下一个角色');
+
+  const resumed = await say(root, deps, '继续');
+  assert.equal(resumed.stage, 'delivered');
+  assert.deepEqual(fake.calls.filter((r) => r === 'backend-dev'), ['backend-dev'], '后端不重做');
+  assert.equal(fake.calls.filter((r) => r === 'frontend-dev').length, 1);
+});
+
+test('需求分析后暂停，直接输入订正后的需求：同一需求重新分析，不是新需求', async () => {
+  const root = await project();
+  const fake = fakeDispatch();
+  let asked = false;
+  const deps = {
+    dispatch: async (args) => {
+      const result = await fake.dispatch(args);
+      if (args.role === 'req-analyst' && !asked) {
+        asked = true;
+        requestPause();
+      }
+      return result;
+    },
+  };
+  const paused = await say(root, deps, '做一个报表');
+  assert.equal(paused.stage, 'paused');
+  assert.deepEqual(fake.calls, ['req-analyst']);
+
+  const r = await say(root, deps, '做一个订单导出');
+  assert.equal(r.stage, 'arch_review');
+  assert.equal((await loadState(root)).request, '做一个订单导出');
+  assert.deepEqual(fake.calls, ['req-analyst', 'req-analyst', 'architect']);
+});
+
+test('开发阶段暂停时，其他文字不会开始新需求，也不会丢掉进度', async () => {
+  const root = await project();
+  const fake = fakeDispatch();
+  let asked = false;
+  const deps = {
+    dispatch: async (args) => {
+      const result = await fake.dispatch(args);
+      if (args.role === 'backend-dev' && !asked) {
+        asked = true;
+        requestPause();
+      }
+      return result;
+    },
+  };
+  await say(root, deps, '做一个报表');
+  await say(root, deps, 'A');
+  const callsBefore = fake.calls.length;
+
+  const r = await say(root, deps, '做一个设置页');
+  assert.equal(r.stage, 'paused');
+  assert.match(r.text, /回复"继续"/);
+  assert.equal(fake.calls.length, callsBefore, '不派发任何角色');
+  assert.equal((await loadState(root)).request, '做一个报表');
+});
+
+test('暂停后输入"取消"：结束当前需求', async () => {
+  const root = await project();
+  const fake = fakeDispatch();
+  let asked = false;
+  const deps = {
+    dispatch: async (args) => {
+      const result = await fake.dispatch(args);
+      if (args.role === 'backend-dev' && !asked) {
+        asked = true;
+        requestPause();
+      }
+      return result;
+    },
+  };
+  await say(root, deps, '做一个报表');
+  await say(root, deps, 'A');
+  const r = await say(root, deps, '取消');
+  assert.equal(r.stage, 'closed');
+});
+
+test('执行中每个角色完成后立即落盘：中途强退后，已选方案与已完成的角色都还在', async () => {
+  const root = await project();
+  const fake = fakeDispatch();
+  let snapshot = null;
+  const deps = {
+    dispatch: async (args) => {
+      if (args.role === 'frontend-dev') snapshot = await loadState(root);
+      return fake.dispatch(args);
+    },
+  };
+  await say(root, deps, '做一个报表');
+  await say(root, deps, 'B');
+  assert.equal(snapshot.choice, 'B');
+  assert.deepEqual(snapshot.buildDone, ['backend-dev']);
+});
+
+test('方案标题的多种写法都能识别，包括加粗列表 "- **A · 名称**"', () => {
+  assert.deepEqual(
+    parsePlans('- **A · AgentTeam 三层架构**\n  说明\n\n- **B · 轻量方案**\n'),
+    [
+      { letter: 'A', title: 'AgentTeam 三层架构' },
+      { letter: 'B', title: '轻量方案' },
+    ],
+  );
+  assert.deepEqual(parsePlans('### 方案A · Go\n## 方案 B：Node\n## 方案 A：重复的不计\n').map((p) => p.letter), ['A', 'B']);
+  assert.deepEqual(parsePlans('- **方案 C：Rust**'), [{ letter: 'C', title: 'Rust' }]);
+});
+
+test('摘要格式不对：只重新检查摘要，修正后回复"重试"即可，不会重新派发架构师', async () => {
+  const root = await project();
+  const fake = fakeDispatch();
+  const summaryPath = join(root, 'docs', 'architecture', 'ARCH-001-summary.md');
+  const deps = {
+    dispatch: async (args) => {
+      const result = await fake.dispatch(args);
+      if (args.role === 'architect') await writeFile(summaryPath, '- 只有一段文字，没有方案标题\n', 'utf8');
+      return result;
+    },
+  };
+  const failed = await say(root, deps, '做一个报表');
+  assert.equal(failed.stage, 'failed');
+  assert.match(failed.text, /至少需要一个方案/);
+
+  await writeFile(summaryPath, '- **A · Go + Vue**\n- **B · Node + React**\n', 'utf8');
+  const retried = await say(root, deps, '重试');
+  assert.equal(retried.stage, 'arch_review');
+  assert.match(retried.text, /A\. Go \+ Vue/);
+  assert.equal(fake.calls.filter((r) => r === 'architect').length, 1, '架构师不重做');
+});
+
+test('角色没有生成文件时，失败说明里带上 agent 的回复，方便用户判断原因', async () => {
+  const root = await project();
+  const deps = {
+    dispatch: async () => ({ ok: true, text: '读取 AGENTS.md 被拒绝：尚未授予读取权限', changed: [], log: 'team/runs/x.md' }),
+  };
+  const r = await say(root, deps, '做一个报表');
+  assert.equal(r.stage, 'failed');
+  assert.match(r.text, /没有生成/);
+  assert.match(r.text, /agent 说明：读取 AGENTS\.md 被拒绝：尚未授予读取权限/);
+});

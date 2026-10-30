@@ -1,5 +1,15 @@
 import { emitKeypressEvents } from 'node:readline';
 import { format } from 'node:util';
+import { existsSync, readFileSync, appendFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+
+const HISTORY_LIMIT = 500;
+
+// 读取历史文件（每行一条）；文件不存在时返回空历史。
+function loadHistory(file) {
+  if (!file || !existsSync(file)) return [];
+  return readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean).slice(-HISTORY_LIMIT);
+}
 
 // 终端界面（只在真实终端中使用）：上方是滚动的对话记录，底部固定为
 // 工作状态行、输入框和状态栏。只用 ANSI 转义序列，不依赖第三方库。
@@ -40,7 +50,12 @@ function fit(text, width) {
   return out;
 }
 
-export function createScreen({ input, output }) {
+// onInterrupt：团队执行中按下 Esc 或 Ctrl+C 时调用，返回要显示的提示文字。
+// historyFile：输入历史的保存位置（每行一条）；不传则只在本次会话中保留。
+export function createScreen({ input, output, onInterrupt, historyFile }) {
+  const history = loadHistory(historyFile);
+  let histIndex = null; // 正在翻看的历史位置；null 表示正在编辑新输入
+  let draft = []; // 开始翻看历史前的输入，按下键回到最新时恢复
   const chars = []; // 输入框内容，按字符保存
   let cursor = 0;
   let title = ''; // 输入框边框上的标题，即提示语
@@ -137,9 +152,32 @@ export function createScreen({ input, output }) {
     return true;
   }
 
+  // 把输入框内容整体换成 text，光标放到末尾。
+  function setInput(text) {
+    chars.length = 0;
+    chars.push(...Array.from(text));
+    cursor = chars.length;
+  }
+
+  // Tab 补全：唯一候选时补全并加一个空格；有多个候选时补到公共前缀，并列出候选。
+  function complete(candidates) {
+    if (candidates.length === 1) return setInput(`${candidates[0]} `);
+    if (candidates.length === 0) return;
+    let prefix = Array.from(candidates[0]);
+    for (const c of candidates.slice(1)) {
+      const other = Array.from(c);
+      let i = 0;
+      while (i < prefix.length && i < other.length && prefix[i] === other[i]) i += 1;
+      prefix = prefix.slice(0, i);
+    }
+    if (prefix.length > chars.length) setInput(prefix.join(''));
+    print(candidates.join('    '));
+  }
+
   // 读取一行。secret 为 true 时不显示输入内容，也不回显到记录里。
   // cancelable 为 true 时，Esc 或 Ctrl+C 先清空已输入的内容；输入为空时返回 "取消"。
-  function line(question, { secret = false, cancelable = false } = {}) {
+  // remember 为 true 时，输入会进入历史（上下键可以找回）；completer(文字) 返回 Tab 补全的候选。
+  function line(question, { secret = false, cancelable = false, remember = false, completer = null } = {}) {
     return new Promise((resolve) => {
       title = question.trim();
       hidden = secret;
@@ -149,6 +187,7 @@ export function createScreen({ input, output }) {
         cursor = 0;
         title = '';
         hidden = false;
+        histIndex = null;
         if (echo === undefined) drawBottom();
         else print(echo);
         resolve(value);
@@ -165,12 +204,54 @@ export function createScreen({ input, output }) {
         if (key.ctrl && (key.name === 'c' || key.name === 'd')) return finish(null);
         if (key.name === 'return' || key.name === 'enter') {
           const text = chars.join('').trim();
+          if (remember && !secret) addHistory(text);
           return finish(text, secret ? undefined : `${question}${text}`);
         }
+        if (remember && key.name === 'up') {
+          if (!history.length) return;
+          if (histIndex === null) {
+            draft = chars.slice();
+            histIndex = history.length;
+          }
+          histIndex = Math.max(0, histIndex - 1);
+          setInput(history[histIndex]);
+          return drawBottom();
+        }
+        if (remember && key.name === 'down') {
+          if (histIndex === null) return;
+          histIndex += 1;
+          if (histIndex >= history.length) {
+            histIndex = null;
+            chars.length = 0;
+            chars.push(...draft);
+            cursor = chars.length;
+          } else setInput(history[histIndex]);
+          return drawBottom();
+        }
+        if (completer && key.name === 'tab') {
+          complete(completer(chars.join('')));
+          return drawBottom();
+        }
+        if (key.name !== 'up' && key.name !== 'down') histIndex = null;
         edit(str, key);
       };
       drawBottom();
     });
+  }
+
+  // 记入历史：去掉与上一条相同的内容，最多保留 HISTORY_LIMIT 条，并写入历史文件。
+  function addHistory(text) {
+    if (!text || history[history.length - 1] === text) return;
+    history.push(text);
+    if (history.length > HISTORY_LIMIT) history.splice(0, history.length - HISTORY_LIMIT);
+    if (historyFile) {
+      try {
+        mkdirSync(dirname(historyFile), { recursive: true });
+        appendFileSync(historyFile, `${text.replace(/\r?\n/g, ' ')}\n`, 'utf8');
+      } catch {
+        // 历史文件写不了不影响对话
+      }
+    }
   }
 
   // 上下键选择，也可以直接输入编号后回车。返回所选下标；Ctrl+C 返回 null。
@@ -226,14 +307,15 @@ export function createScreen({ input, output }) {
 
   function onKey(str, key = {}) {
     if (reader) return reader(str, key);
-    // 团队执行中不能中途取消（会留下写了一半的文件）；连按两次 Ctrl+C 才强制退出。
+    // 团队执行中不中断当前角色（会留下写了一半的文件），只请求暂停：当前角色结束后停下。
+    // 连按两次 Ctrl+C 才强制退出。
     if (key.name === 'escape' || (key.ctrl && key.name === 'c')) {
       if (key.ctrl && key.name === 'c' && Date.now() - lastInterrupt < 2000) {
         stop();
         process.exit(130);
       }
       lastInterrupt = Date.now();
-      print('执行中无法取消，等本步结束后再取消；连按两次 Ctrl+C 强制退出。');
+      print(onInterrupt ? onInterrupt() : '执行中无法取消，等本步结束后再取消；连按两次 Ctrl+C 强制退出。');
       return;
     }
     // 没有等待输入时仍可以编辑输入框（例如团队执行时提前写下一句），但回车不提交。

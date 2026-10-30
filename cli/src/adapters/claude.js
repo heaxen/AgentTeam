@@ -1,4 +1,4 @@
-import { runProcess, assertSafeToken, toRunResult } from './process.js';
+import { runProcess, assertSafeToken, quotePath, toRunResult } from './process.js';
 import { assertAllowedCommand } from '../allowlist.js';
 
 // Claude Code 适配器（无头模式 claude -p）。设计见 cli/docs/adapters.md。
@@ -13,10 +13,13 @@ const SUBSCRIPTION_ENV_TO_CLEAR = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'];
 
 // allowedCommands 中的每条命令放行两种写法：完全相同，以及带参数（如 npm test --watch=false）。
 // 官方 --allowedTools 的写法为 "Bash(git *)"，这里的模式都由白名单校验后才拼接。
-export function buildCommand({ model, effort, allowedCommands = [] } = {}) {
+// addDirs：除项目目录外还允许读取的目录（如 CLI 自带的团队公约与角色说明书）。
+// 不加的话，无头模式下读取项目之外的文件会被拒绝，角色无法开工。
+export function buildCommand({ model, effort, allowedCommands = [], addDirs = [] } = {}) {
   const parts = ['claude', '-p', '--output-format', 'json', '--permission-mode', 'acceptEdits'];
   if (model) parts.push('--model', assertSafeToken(model, 'model'));
   if (effort) parts.push('--effort', assertSafeToken(effort, 'effort'));
+  if (addDirs.length) parts.push('--add-dir', ...addDirs.map((d) => quotePath(d, '读取目录')));
   if (allowedCommands.length) {
     const patterns = allowedCommands.flatMap((c) => {
       const cmd = assertAllowedCommand(c);
@@ -43,9 +46,9 @@ export const claudeAdapter = {
   id: 'claude',
   canEditFiles: true,
 
-  async run({ prompt, cwd, model, effort, credential = {}, timeoutMs, allowedCommands = [] }) {
+  async run({ prompt, cwd, model, effort, credential = {}, timeoutMs, allowedCommands = [], addDirs = [] }) {
     const { code, stdout, stderr, timedOut } = await runProcess({
-      command: buildCommand({ model, allowedCommands }),
+      command: buildCommand({ model, effort, allowedCommands, addDirs }),
       cwd,
       env: buildEnv(credential),
       input: prompt,
