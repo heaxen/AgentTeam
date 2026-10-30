@@ -8,6 +8,7 @@ const TEMPLATES = join(dirname(fileURLToPath(import.meta.url)), '..', 'templates
 const DIRS = [
   'team/tasks',
   'team/roles',
+  'team/runs',
   'stacks',
   'docs/requirements',
   'docs/prototype',

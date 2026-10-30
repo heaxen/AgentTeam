@@ -36,6 +36,8 @@
 | 目录 | 归属 | 放什么 |
 | --- | --- | --- |
 | `team/tasks/` | PM | 任务卡 `T-NNN.md` |
+| `team/allowed-commands.json` | 用户 / PM | 允许 agent 执行的验证命令清单（只放整条命令，见 `cli/docs/adapters.md`） |
+| `team/runs/` | CLI 派发记录（只追加，不改写） | 每次派发的运行记录 `<任务号>-<角色>-<时间>.md`：提示词、agent 回复、改动文件清单（过程记录，见第 13.1 节） |
 | `team/roles/` | 全队（只读） | 各角色说明书副本，母版在 `prompts/` |
 | `docs/requirements/` | 需求分析 | `REQ-NNN.md` |
 | `docs/architecture/` | 架构师 | `ARCH-NNN.md`、`ARCH-NNN-summary.md`（用户摘要页） |

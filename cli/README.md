@@ -5,7 +5,7 @@ AI 开发团队的命令行工具。在已有项目里写入团队公约和角�
 - **订阅模式（subscription）**：调用本机已登录的 Claude Code（`claude -p`），消耗订阅额度。
 - **API 模式（api）**：使用你自己的 Anthropic API key，按 token 计费。
 
-> 状态：早期版本（0.4.0）。`init`、`config`、`doctor`、`run`、`agents`、`auth`、`assign` 已实现；任务派发与角色执行尚未实现。
+> 状态：0.5.0。`init`、`config`、`doctor`、`run`、`agents`、`auth`、`assign` 已实现；`dispatch` 已支持 claude、codex、gemini，其余 agent 的接入进度见 `docs/adapters.md`。
 
 ## 安装与使用
 
@@ -22,6 +22,26 @@ agentteam run "你好"              # 调用一次模型，验证连通性
 ```
 
 配置保存在 `~/.agentteam/config.json`。环境变量优先于配置文件：`AGENTTEAM_MODE`、`AGENTTEAM_MODEL`、`ANTHROPIC_API_KEY`。
+
+### 把角色交给 agent 执行
+
+```bash
+agentteam agents                          # 查看 agent 与认证状态
+agentteam auth claude                     # 订阅：启动该 agent 自己的登录
+agentteam auth gemini --from-env          # 个人 API：从环境变量保存 key（不回显）
+agentteam assign backend-dev codex        # 指定角色使用的 agent
+agentteam dispatch T-001 backend-dev      # 把 team/tasks/T-001.md 交给 backend-dev 执行
+```
+
+每次派发在 `team/runs/` 下写一份运行记录（提示词、回复、改动文件清单）。派发前会检查 agent 是否已接入、是否已认证，不满足时直接报错，不会启动 agent。
+
+允许执行的验证命令写在项目的 `team/allowed-commands.json`：
+
+```json
+{ "version": 1, "commands": ["npm test"] }
+```
+
+未列入的命令，agent 不能执行。Gemini 在无头模式下不能执行任何 shell 命令。
 
 ## 开放接口（为 Web / 移动端 / 小程序预留）
 

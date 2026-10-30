@@ -7,6 +7,8 @@ import { listAgents, getAgent } from './agents.js';
 import { loadCredentials, saveAgentCredential, isAuthenticated } from './credentials.js';
 import { ROLES, assignRole, assignAll, resolveAssignments, AGENT_IDS } from './assign.js';
 import { runLoginCommand, keyFromEnv } from './auth.js';
+import { hasAdapter } from './adapters/index.js';
+import { dispatchTask } from './dispatch.js';
 
 const USAGE = `用法：
   agentteam init [目录]                 在项目中写入团队公约、角色说明书和目录结构（不覆盖已有文件）
@@ -21,6 +23,7 @@ const USAGE = `用法：
   agentteam assign                      查看当前项目每个角色使用的 agent
   agentteam assign <角色> <agent>       给角色指定 agent（在当前项目的 team/assignments.json 中记录）
   agentteam assign --all <agent>        全部角色使用同一个 agent
+  agentteam dispatch <任务号> <角色>     把任务卡交给该角色分配的 agent 执行（如 agentteam dispatch T-001 backend-dev）
 
 全局选项：
   --json    以 JSON 行输出事件（供 Web / 移动端 / 小程序等外部界面读取）`;
@@ -117,7 +120,8 @@ export async function main(argv) {
     }));
     emit('agents.list', { agents: rows });
     for (const r of rows) {
-      log(`${r.id.padEnd(10)} ${r.name}（${r.authenticated ? '已认证' : '未认证'}）`);
+      const runnable = hasAdapter(r.id) ? '可执行角色' : '未接入执行适配器';
+      log(`${r.id.padEnd(10)} ${r.name}（${r.authenticated ? '已认证' : '未认证'}；${runnable}）`);
     }
     return 0;
   }
@@ -142,14 +146,14 @@ export async function main(argv) {
         console.error(`环境变量中没有找到 ${agent.apiKeyEnv?.join(' / ') || '（该 agent 不使用 API key）'}`);
         return 1;
       }
-      await saveAgentCredential(agent.id, { apiKey: found.value, savedAt: new Date().toISOString() });
+      await saveAgentCredential(agent.id, { method: 'api', apiKey: found.value, savedAt: new Date().toISOString() });
       emit('auth.saved', { agent: agent.id, from: found.name });
       log(`已从 ${found.name} 读取并保存 ${agent.name} 的 key（不会显示内容）`);
       return 0;
     }
 
     if (flags.has('--confirm')) {
-      await saveAgentCredential(agent.id, { loggedInAt: new Date().toISOString() });
+      await saveAgentCredential(agent.id, { method: 'subscription', loggedInAt: new Date().toISOString() });
       emit('auth.confirmed', { agent: agent.id });
       log(`已记录 ${agent.name} 为已认证`);
       return 0;
@@ -162,8 +166,8 @@ export async function main(argv) {
         console.error(`登录未完成（退出码 ${code}），未记录认证状态。`);
         return 1;
       }
-      await saveAgentCredential(agent.id, { loggedInAt: new Date().toISOString() });
-      emit('auth.saved', { agent: agent.id, method: 'login' });
+      await saveAgentCredential(agent.id, { method: 'subscription', loggedInAt: new Date().toISOString() });
+      emit('auth.saved', { agent: agent.id, method: 'subscription' });
       log(`${agent.name} 已登录，之后调用不再要求认证。`);
       return 0;
     }
@@ -195,6 +199,7 @@ export async function main(argv) {
       }
       emit('assign.all', { agent: agentId });
       log(`全部角色已指定为 ${agentId}`);
+      if (!hasAdapter(agentId)) log(`注意：${agentId} 尚未接入执行适配器，派发任务时会被拒绝。`);
       return 0;
     }
 
@@ -202,7 +207,8 @@ export async function main(argv) {
       const resolved = await resolveAssignments(root);
       emit('assign.show', { assignments: resolved });
       for (const role of ROLES) {
-        log(`${role.padEnd(13)} ${resolved[role]}`);
+        const suffix = hasAdapter(resolved[role]) ? '' : '（未接入执行适配器）';
+        log(`${role.padEnd(13)} ${resolved[role]}${suffix}`);
       }
       return 0;
     }
@@ -220,7 +226,31 @@ export async function main(argv) {
     }
     emit('assign.set', { role, agent: agentId });
     log(`${role} 已指定为 ${agentId}`);
+    if (!hasAdapter(agentId)) log(`注意：${agentId} 尚未接入执行适配器，派发该角色时会被拒绝。`);
     return 0;
+  }
+
+  if (command === 'dispatch') {
+    const [taskId, role] = rest;
+    if (!taskId || !role) {
+      console.error('用法：agentteam dispatch <任务号> <角色>，例如 agentteam dispatch T-001 backend-dev');
+      return 1;
+    }
+    let result;
+    try {
+      result = await dispatchTask({ root: process.cwd(), taskId, role, emit });
+    } catch (err) {
+      console.error(err.message);
+      return 1;
+    }
+    if (result.ok) {
+      log(`${role} 已完成 ${taskId}。运行记录：${result.log}`);
+      if (result.changed.length) log(`改动文件：\n${result.changed.map((f) => `  ${f}`).join('\n')}`);
+      log(`回复：\n${result.text}`);
+      return 0;
+    }
+    console.error(`${role} 执行 ${taskId} 失败：${result.error}。运行记录：${result.log}`);
+    return 1;
   }
 
   console.error(`未知命令：${command}\n`);
