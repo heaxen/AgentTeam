@@ -8,6 +8,21 @@
 
 每个版本打一个 Git 标签 `vX.Y.Z`，与 `cli/package.json` 中的 `version` 保持一致。
 
+## [0.5.0] - 2026-10-30
+
+### 新增
+- 执行适配层（设计见 `cli/docs/adapters.md`）：claude、codex、gemini 的无头调用，统一为同一个 `run()` 契约。
+- CLI `dispatch <任务号> <角色>`：读取任务卡与角色说明书，交给该角色分配的 agent 执行，写入 `team/runs/` 运行记录，并列出本次改动的文件。
+- 凭证按 agent 记录认证方式（`subscription` 或 `api`）。派发时订阅模式会清除 `ANTHROPIC_API_KEY` 等变量，避免静默改用 API 计费。
+- DeepSeek 适配器：工具循环（读、写、列目录、运行白名单命令），文件访问限定在项目根目录内。
+- 命令白名单 `team/allowed-commands.json`：claude 通过 `--allowedTools` 放行；DeepSeek 通过 `run_command` 工具放行。
+- `init` 新建 `team/runs/` 目录。
+
+### 说明
+- 已实跑：claude 订阅模式（写文件；白名单内命令执行、白名单外命令被拒绝）。codex、gemini、deepseek 尚未实跑。
+- Gemini 无头模式下 shell 命令一律拒绝，不写白名单（其策略文件在用户级目录，会影响所有项目）。
+- `run`、`doctor` 仍使用旧的全局 `mode` 配置，与按 agent 的认证方式并存，后续需要统一。
+
 ## [0.4.0] - 2026-10-30
 
 ### 新增
