@@ -5,7 +5,7 @@ AI 开发团队的命令行工具。在已有项目里写入团队公约和角�
 - **订阅模式（subscription）**：调用本机已登录的 Claude Code（`claude -p`），消耗订阅额度。
 - **API 模式（api）**：使用你自己的 Anthropic API key，按 token 计费。
 
-> 状态：早期版本（0.3.0）。`init`、`config`、`doctor`、`run` 已实现；任务派发、角色调度尚未实现。
+> 状态：早期版本（0.4.0）。`init`、`config`、`doctor`、`run`、`agents`、`auth`、`assign` 已实现；任务派发与角色执行尚未实现。
 
 ## 安装与使用
 

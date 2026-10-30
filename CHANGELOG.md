@@ -8,6 +8,17 @@
 
 每个版本打一个 Git 标签 `vX.Y.Z`，与 `cli/package.json` 中的 `version` 保持一致。
 
+## [0.4.0] - 2026-10-30
+
+### 新增
+- CLI `agents`：列出 10 个已对照官方文档核对的 agent（claude、codex、gemini、qwen、copilot、cursor、opencode、aider、pi、deepseek）及认证状态。
+- CLI `auth <agent>`：启动该 agent 自己的登录；`--from-env` 从环境变量保存 API key；`--confirm` 在手动登录后记录为已认证。
+- CLI `assign`：按角色指定 agent（`assign <角色> <agent>`、`assign --all <agent>`），记录在项目的 `team/assignments.json`，不含凭证。
+- 凭证单独保存在 `~/.agentteam/credentials.json`，与 `config.json` 分离。
+
+### 说明
+- 角色执行层还只支持 Claude；其他 agent 的调用适配器尚未实现。
+
 ## [0.3.0] - 2026-10-29
 
 ### 新增
