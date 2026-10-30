@@ -8,6 +8,34 @@
 
 每个版本打一个 Git 标签 `vX.Y.Z`，与 `cli/package.json` 中的 `version` 保持一致。
 
+## [未发布]
+
+### 新增
+- 对话入口：`agentteam` 进入对话（非交互环境只显示帮助；`agentteam chat` 同样进入对话）。第一版流程为需求分析、架构方案选择、按顺序执行（后端、前端、测试）、交付报告。
+- 每个角色可单独指定 agent、模型与思考强度。对话中 `/assign <角色> <agent>` 与 `/assign all <agent>` 按顺序完成：认证（未认证时进入登录或粘贴 API key，输入不显示）→ 选择模型 → 选择思考强度 → 保存。`/model <角色>` 与 `/effort <角色>` 分别重新选择模型或强度。选择均为编号列表，回车选默认值，选"其他"可手动输入模型名。
+- 思考强度支持的取值（来自官方文档）：claude（`--effort`：low、medium、high、xhigh、max）；codex（`-c model_reasoning_effort`：low、medium、high、xhigh、max、ultra）；deepseek（`thinking` 与 `reasoning_effort`：关闭、low、high、max）。gemini 不支持按次设置，链式选择时跳过该步。
+- 角色配置格式升为 version 3：`team/assignments.json` 中每个角色为 `{ agent, model, effort }`。旧格式（纯字符串或只有 agent/model 的对象）读取时自动补全。
+- 对话内命令：`/team`、`/agents`、`/auth <agent>`、`/assign`、`/model`、`/effort`、`/help`。`/auth` 不退出对话。
+- 新增 `agentteam team`（当前阶段，以及每个角色的 agent、模型、思考强度与认证状态）。
+- 对话流程的状态与对话记录分别写入 `team/state.json` 与 `team/conversation.md`。
+- 派发前的检查失败（如未认证）不再结束对话，转为可重试的失败步骤。
+- 测试：新增 `test/workflow.test.js`（主线、修改意见、方案选择、缺档案、失败重试、交付后分支）、`test/chat.test.js`（对话命令与链式选择）、`test/configure.test.js`（编号选择、各 agent 的链式流程、取消与 preset）、`test/effort.test.js`（各适配器的思考强度参数、角色强度读写）。
+
+- 对话界面改为终端 TUI：底部固定为工作状态行（执行中显示转圈与秒数）、上下两条分隔线之间的输入行（平铺样式，无边框），以及两行状态栏（项目目录、分支、阶段，各 agent 的角色数）。对话记录在上方滚动，其他输出也进入记录区域。仅在真实终端中启用，管道与测试仍用行输入。仅使用 ANSI 转义，没有新增依赖。
+- 修复 TUI 每次按键、团队执行时的刷新都会在下方叠加一份新界面的问题：每次绘制前先清掉上一帧。
+- Git Bash（MSYS/mintty）下默认改用行输入（编号选择），因为其终端对光标重绘支持不可靠；Windows Terminal 与 PowerShell 仍用 TUI。可用环境变量 `AGENTTEAM_UI=tui` 或 `AGENTTEAM_UI=plain` 强制指定。
+- 需求流程调整：输入需求后直接分析并列出方案（不再有需求确认步骤）；方案阶段输入序号、字母或上下键选择，其他文字是讨论意见，不会当作新需求。
+- 取消：Esc 或 Ctrl+C（输入框有字时先清空），或输入"取消"；执行中无法取消。取消或交付后，输入"新需求"或"new"，下一条输入才作为新需求。失败后回复"重试"或"继续"从失败处接着做，原需求保留。
+- 执行中的进度只显示角色名，不再打印执行细节。
+
+### 变更
+- 命令精简：`agentteam run`、`doctor`、`config` 已移除，改用对话与 `agentteam` 的脚本子命令。`team`、`agents`、`auth`、`assign`、`dispatch` 保留给脚本使用，不在 `--help` 中列出。
+- 移除旧的全局模式配置（`~/.agentteam/config.json` 与 `src/providers/`），凭证统一保存在 `~/.agentteam/credentials.json`。
+
+### 说明
+- 未验证：对话流程尚未用真实 agent 端到端跑通；交互界面（编号列表、masked 输入、各 agent 的登录启动）只在非交互环境测试过；codex 的 `-c model_reasoning_effort`、claude 的 `--effort`、deepseek 的 thinking 参数均未实跑。
+- 交付后的调整（A/B/C/D 类）推迟到下一版。
+
 ## [0.5.0] - 2026-10-30
 
 ### 新增
