@@ -1,6 +1,6 @@
 {
   "name": "agentteam",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "AI development team CLI: role-based agents working on a file-driven workflow inside an existing project",
   "type": "module",
   "bin": {

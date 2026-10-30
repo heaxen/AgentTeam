@@ -16,6 +16,8 @@ const DIRS = [
   'docs/frontend',
   'docs/backend',
   'docs/bugs',
+  'docs/messages',
+  'docs/delivery',
   'docs/acceptance',
   'docs/decisions',
   'docs/changelog',
