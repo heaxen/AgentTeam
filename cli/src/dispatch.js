@@ -1,10 +1,19 @@
 import { readFile, writeFile, mkdir, readdir, stat } from 'node:fs/promises';
-import { join, relative, sep } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getAgent } from './agents.js';
 import { ROLES, resolveAssignments } from './assign.js';
 import { getAdapter } from './adapters/index.js';
 import { loadCredentials } from './credentials.js';
 import { loadAllowedCommands } from './allowlist.js';
+
+// 团队公约、手册与角色说明书随 CLI 发布，不复制进项目（项目里只留过程记录）。
+const TEMPLATES = join(dirname(fileURLToPath(import.meta.url)), '..', 'templates');
+const TEAM_FILES = [join(TEMPLATES, 'AGENTS.md'), join(TEMPLATES, 'AI开发团队角色与协作流程.md')];
+
+export function roleFile(role) {
+  return join(TEMPLATES, 'prompts', `${role}.md`);
+}
 
 // 派发一个任务给某个角色：读任务卡与角色说明书 → 组装提示词 → 交给该角色分配的 agent 执行 → 留痕。
 // 设计见 cli/docs/adapters.md。
@@ -48,9 +57,8 @@ export function buildPrompt({ role, taskId, taskText, roleText }) {
     `你是本项目的【${role}】角色，本次只执行任务 ${taskId}。`,
     '',
     '开工前按顺序读取（顺序不可颠倒）：',
-    '1. AGENTS.md（团队公约）',
-    '2. AI开发团队角色与协作流程.md（手册）',
-    '3. 下方任务卡"适用档案"写明的技术栈档案',
+    ...TEAM_FILES.map((file, i) => `${i + 1}. ${file}（团队公约与手册，只读）`),
+    `${TEAM_FILES.length + 1}. 下方任务卡"适用档案"指向的已选架构方案（即本项目的技术栈）`,
     '',
     '硬性要求：',
     '- 所有产物必须写入磁盘的约定路径；只写在回复里的内容视为不存在。',
@@ -157,10 +165,7 @@ export async function dispatchTask({
     join(root, 'team', 'tasks', `${taskId}.md`),
     `任务卡 team/tasks/${taskId}.md 不存在，请先由 PM 创建`,
   );
-  const roleText = await readRequired(
-    join(root, 'team', 'roles', `${role}.md`),
-    `角色说明书 team/roles/${role}.md 不存在，请先运行 agentteam init`,
-  );
+  const roleText = await readRequired(roleFile(role), `角色说明书 ${role} 缺失，请重新安装 agentteam`);
 
   const assignments = await resolveAssignments(root);
   const { agent: agentId, model, effort } = assignments[role];

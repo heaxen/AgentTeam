@@ -9,18 +9,18 @@ AI 开发团队的命令行工具。你用一段对话描述需求，团队里�
 ```bash
 npm install -g agentteam          # 发布到 npm 之后可用；开发阶段见下方"本地测试"
 
-cd 你的项目
-agentteam init                    # 写入 AGENTS.md、角色说明书、目录结构；已存在的文件不会覆盖
+cd 你的项目（可以是空目录）
 agentteam                         # 进入对话
 ```
 
 第一次使用：
 
-1. 在 `stacks/` 下新建技术栈档案（复制 `stacks/_template.md` 并填写）。
-2. 在对话里输入 `/auth claude`，登录你要用的 agent。
-3. 直接说你的需求。
+1. 在对话里输入 `/auth claude`，登录你要用的 agent。
+2. 直接说你的需求。PM 会请架构师给出方案，你选定的方案即本项目的技术栈。
 
 对话里输入 `/help` 查看全部命令。
+
+项目里只保留过程记录：`team/`（对话记录、状态、任务卡、运行日志）和 `docs/`（需求、方案、决策、交付报告）、应用代码。团队公约与角色说明书随 CLI 发布，不复制进项目。
 
 ### 对话里的设置命令
 
@@ -140,7 +140,7 @@ npm install
 npm test          # 先从仓库根目录同步 templates/，再运行测试
 ```
 
-`templates/` 由 `scripts/sync-templates.js` 从仓库根目录的 `AGENTS.md`、手册、`prompts/`、`stacks/_template.md` 生成，不要直接编辑，也不提交到仓库（见 `.gitignore`）。发布前 `prepack` 会自动同步。
+`templates/` 由 `scripts/sync-templates.js` 从仓库根目录的 `AGENTS.md`、手册、`prompts/` 生成，不要直接编辑，也不提交到仓库（见 `.gitignore`）。发布前 `prepack` 会自动同步。
 
 ### 本地测试（不发布到 npm）
 
@@ -150,7 +150,7 @@ npm test          # 先从仓库根目录同步 templates/，再运行测试
 
 ```bash
 cd cli
-node bin/agentteam.js init D:\测试项目
+mkdir D:\测试项目
 cd D:\测试项目
 node <仓库>/cli/bin/agentteam.js                    # 进入对话
 ```
@@ -161,7 +161,7 @@ node <仓库>/cli/bin/agentteam.js                    # 进入对话
 cd cli
 npm link                  # 在本机创建全局命令 agentteam，指向本目录
 cd D:\测试项目
-agentteam init .
+agentteam                 # 进入对话
 npm unlink -g agentteam   # 用完后取消链接
 ```
 

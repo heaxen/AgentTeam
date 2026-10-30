@@ -83,17 +83,6 @@ async function nextId(root, dir, prefix) {
   return `${prefix}-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0')}`;
 }
 
-export async function findStackFile(root) {
-  let names = [];
-  try {
-    names = await readdir(join(root, 'stacks'));
-  } catch {
-    // 没有 stacks 目录
-  }
-  const file = names.find((n) => n.endsWith('.md') && n !== '_template.md');
-  return file ? `stacks/${file}` : null;
-}
-
 async function exists(path) {
   try {
     await access(path);
@@ -206,13 +195,8 @@ async function doArchitecture(root, state, deps, progress, feedback) {
 }
 
 async function doBuild(root, state, deps, progress) {
-  const stack = await findStackFile(root);
-  if (!stack) {
-    return {
-      ok: false,
-      error: '缺少技术栈档案。请在 stacks/ 下新建项目档案（复制 stacks/_template.md 并填写），然后回复"重试"',
-    };
-  }
+  // 选定的架构方案就是本项目的技术栈，不再要求单独的 stacks/ 档案。
+  const stack = `docs/architecture/${state.arch}-summary.md 中的方案 ${state.choice}`;
   const n = state.req.slice(4);
   const choice = `方案 ${state.choice}`;
   const specs = {
@@ -228,7 +212,7 @@ async function doBuild(root, state, deps, progress) {
       role,
       title: `${ROLE_NAMES[role]} · ${state.req}`,
       goal: spec.goal,
-      scope: `只写 ${spec.out}，并修改 ${stack} 指定的应用代码目录`,
+      scope: `只写 ${spec.out}，并按${choice}约定的位置修改应用代码`,
       notDo: '不修改需求与架构文件；不修改其他角色的目录',
       stack,
       inputs: [`需求：docs/requirements/${state.req}.md`, `架构摘要：docs/architecture/${state.arch}-summary.md`, `已选方案：${choice}`],

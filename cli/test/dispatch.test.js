@@ -9,6 +9,7 @@ import {
   assertTaskId,
   assertRole,
   buildPrompt,
+  roleFile,
   checkCredential,
   effectiveCredential,
   snapshot,
@@ -19,9 +20,7 @@ import {
 async function projectWithTask() {
   const root = await mkdtemp(join(tmpdir(), 'agentteam-dispatch-'));
   await mkdir(join(root, 'team', 'tasks'), { recursive: true });
-  await mkdir(join(root, 'team', 'roles'), { recursive: true });
   await writeFile(join(root, 'team', 'tasks', 'T-001.md'), '# T-001\n目标：登录接口\n', 'utf8');
-  await writeFile(join(root, 'team', 'roles', 'backend-dev.md'), '# 后端开发说明书\n', 'utf8');
   return root;
 }
 
@@ -45,6 +44,11 @@ test('提示词包含角色、任务卡、说明书与 7 字段回传要求', ()
   assert.match(prompt, /后端说明书正文/);
   assert.match(prompt, /【改动文件】/);
   assert.match(prompt, /AGENTS\.md/);
+  assert.doesNotMatch(prompt, /team[\\/]roles/, '说明书随 CLI 发布，不从项目里读取');
+});
+
+test('角色说明书从 CLI 发布目录读取，项目里不需要 team/roles', () => {
+  assert.match(roleFile('backend-dev'), /templates[\\/]prompts[\\/]backend-dev\.md$/);
 });
 
 test('认证检查：未认证、缺 key 时直接拒绝', () => {
