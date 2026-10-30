@@ -26,6 +26,5 @@ for (const file of await readdir(promptsDir)) {
   }
 }
 
-await copy(join(REPO_ROOT, 'stacks', '_template.md'), join(TEMPLATES, 'stacks', '_template.md'));
 
 console.log('templates 已从仓库根目录同步');

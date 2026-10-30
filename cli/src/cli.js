@@ -1,5 +1,3 @@
-import { resolve } from 'node:path';
-import { initProject } from './init.js';
 import { createEmitter } from './events.js';
 import { listAgents, getAgent } from './agents.js';
 import { loadCredentials, isAuthenticated } from './credentials.js';
@@ -18,14 +16,12 @@ const USAGE = `AgentTeam：用对话让一支 AI 团队交付你的需求。
 
 用法：
   agentteam            进入对话（日常只用这个；对话里输入 /help 查看全部命令）
-  agentteam init       在项目目录里初始化（第一次使用前运行一次）
   agentteam --help     显示本帮助
 
 第一次使用：
-  1. cd 你的项目，然后运行 agentteam init
-  2. 在 stacks/ 下新建技术栈档案（复制 stacks/_template.md 并填写）
-  3. 运行 agentteam，输入 /auth claude 登录你要用的 agent
-  4. 直接说你的需求`;
+  1. cd 你的项目目录（可以是空目录），然后运行 agentteam
+  2. 输入 /auth claude 登录你要用的 agent
+  3. 直接说你的需求；选定的架构方案即本项目的技术栈`;
 
 // 值参数：--model、--effort，支持 "--model X" 与 "--model=X" 两种写法。
 const VALUE_FLAGS = ['model', 'effort'];
@@ -69,14 +65,6 @@ export async function main(argv) {
 
   if (command === 'chat') {
     return runChat({ root: process.cwd() });
-  }
-
-  if (command === 'init') {
-    const root = resolve(rest[0] ?? '.');
-    const { created, skipped } = await initProject(root, emit);
-    log(`已初始化：${root}`);
-    log(`新建 ${created.length} 个文件，跳过 ${skipped.length} 个已存在的文件。`);
-    return 0;
   }
 
   // 以下为脚本与高级用法（不在帮助中列出）。

@@ -1,15 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { handleMessage, loadState, parseOptions, planOptions, findStackFile } from '../src/workflow.js';
+import { handleMessage, loadState, parseOptions, planOptions } from '../src/workflow.js';
 
 async function project() {
   const root = await mkdtemp(join(tmpdir(), 'agentteam-flow-'));
   await mkdir(join(root, 'team', 'tasks'), { recursive: true });
-  await mkdir(join(root, 'stacks'), { recursive: true });
-  await writeFile(join(root, 'stacks', 'demo.md'), '# demo\n', 'utf8');
   return root;
 }
 
@@ -118,16 +116,16 @@ test('方案阶段可以用字母或序号选择；不存在的方案给出可�
   assert.match(outOfRange.text, /1 到 2/);
 });
 
-test('缺少技术栈档案：执行前停止，并说明怎么补', async () => {
+test('不需要 stacks 档案：选定的方案即技术栈，实现任务卡里写明所选方案', async () => {
   const root = await project();
-  await rm(join(root, 'stacks', 'demo.md'));
   const fake = fakeDispatch();
   const deps = { dispatch: fake.dispatch };
   await say(root, deps, '做一个报表');
-  const r = await say(root, deps, 'A');
-  assert.equal(r.stage, 'failed');
-  assert.match(r.text, /缺少技术栈档案/);
-  assert.equal(fake.calls.includes('backend-dev'), false, '没有档案时不得派发实现角色');
+  const r = await say(root, deps, 'B');
+  assert.equal(r.stage, 'delivered');
+  const cards = await readdir(join(root, 'team', 'tasks'));
+  const cardTexts = await Promise.all(cards.map((c) => readFile(join(root, 'team', 'tasks', c), 'utf8')));
+  assert.ok(cardTexts.some((t) => /适用档案：.*方案 B/.test(t)), '后端任务卡应写明所选方案');
 });
 
 test('某个角色失败后，回复"重试"从失败处继续，已完成的角色不重做', async () => {
@@ -245,10 +243,3 @@ test('对话记录落盘：用户与团队的每条消息都写入 team/conversa
   assert.match(log, /\*\*PM\*\*/);
 });
 
-test('findStackFile 忽略模板，只认项目档案', async () => {
-  const root = await project();
-  await writeFile(join(root, 'stacks', 'demo.md'), 'x', 'utf8');
-  await writeFile(join(root, 'stacks', '_template.md'), 'x', 'utf8');
-  assert.equal(await findStackFile(root), 'stacks/demo.md');
-  assert.ok((await readdir(join(root, 'stacks'))).length === 2);
-});

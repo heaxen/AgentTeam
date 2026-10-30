@@ -136,6 +136,11 @@ export async function runChat({ root }) {
   const print = (text) => prompt.print(text);
   print('AgentTeam 对话已开始。输入 /help 查看用法。');
 
+  // Git Bash 里 Node 拿不到终端，只能用行输入；加 winpty 启动后可以显示完整界面。
+  if (process.env.MSYSTEM && !process.stdin.isTTY) {
+    print('提示：当前是 Git Bash 的行输入模式。要显示带分隔线的完整输入框，请用 winpty agentteam chat 启动。');
+  }
+
   const credentials = await loadCredentials();
   const anyAuthed = listAgents().some((a) => isAuthenticated(a, credentials.agents[a.id]));
   if (!anyAuthed) {
