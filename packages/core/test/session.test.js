@@ -140,3 +140,18 @@ test('onOutput 只为非空字符串发事件，坏数据不会让派发失败',
   assert.equal(outputs.length, 2, '两个角色各一条');
   assert.ok(outputs.every((e) => e.chunk === '真正的输出\n'));
 });
+
+test('工作流本身出错时，send 抛出原始错误，并留下收尾事件，之后可再发消息', async () => {
+  const root = await project();
+  // 对话记录路径是目录，工作流写记录时必然失败。
+  await mkdir(join(root, 'team', 'conversation.md'), { recursive: true });
+  const session = await createSession({ root, dispatch: fakeDispatch() });
+
+  await assert.rejects(session.send('做个登录功能'), (err) => !(err instanceof BusyError));
+  const events = session.log.after(0);
+  assert.equal(events.at(-2).type, 'message');
+  assert.equal(events.at(-2).from, 'team');
+  assert.match(events.at(-2).text, /^执行出错：/);
+  assert.equal(events.at(-1).type, 'stage.changed');
+  assert.equal((await session.state()).running, false);
+});

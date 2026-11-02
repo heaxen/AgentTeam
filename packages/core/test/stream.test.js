@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runProcess, lineSplitter, trackOutput } from '../src/adapters/process.js';
 import { deepseekAdapter } from '../src/adapters/deepseek.js';
+import { buildCommand as claudeCommand, parseStreamLine, toStreamRunResult, createStreamCollector } from '../src/adapters/claude.js';
 
 test('runProcess 把 stdout 逐段交给 onChunk，同时仍然返回完整输出', async () => {
   // 子进程写出 a 后等标记文件出现才写 b；标记文件由 onChunk 在收到第一段时创建，所以两段必然分开到达。
@@ -122,4 +123,104 @@ test('deepseek 把每条模型回复交给 onOutput', async () => {
   });
   assert.equal(result.ok, true);
   assert.deepEqual(out, ['完成\n']);
+});
+
+test('claude 流式命令：用 stream-json 与 --verbose，普通命令保持不变', () => {
+  assert.equal(
+    claudeCommand({ stream: true }),
+    'claude -p --output-format stream-json --verbose --permission-mode acceptEdits',
+  );
+  assert.equal(claudeCommand(), 'claude -p --output-format json --permission-mode acceptEdits');
+});
+
+test('parseStreamLine：取出 assistant 的文本块与结束事件，忽略其他行', () => {
+  const assistant = JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'text', text: '先看文件' }, { type: 'tool_use', name: 'Read' }, { type: 'text', text: '再改' }] },
+  });
+  assert.deepEqual(parseStreamLine(assistant), { texts: ['先看文件', '再改'] });
+
+  const result = JSON.stringify({ type: 'result', result: '完成', is_error: false });
+  assert.deepEqual(parseStreamLine(result), { texts: [], result: { text: '完成', isError: false } });
+
+  assert.deepEqual(parseStreamLine(JSON.stringify({ type: 'user' })), { texts: [] });
+  assert.deepEqual(parseStreamLine('不是 JSON'), { texts: [] });
+});
+
+test('真实采集的 claude 样本：能解析出文本和结束事件', async () => {
+  const text = await readFile(new URL('./fixtures/claude-stream.jsonl', import.meta.url), 'utf8');
+  const parsed = text.split('\n').filter(Boolean).map(parseStreamLine);
+  assert.ok(parsed.flatMap((p) => p.texts).length > 0, '应能取出至少一段文本');
+  const finals = parsed.filter((p) => p.result);
+  assert.equal(finals.length, 1, '应有且只有一个结束事件');
+  assert.equal(finals[0].result.isError, false);
+  assert.ok(finals[0].result.text.length > 0);
+});
+
+test('claude 流式结果：结束事件优先于退出码', () => {
+  // (a) 结束事件成功，退出码 1：仍算成功
+  const a = toStreamRunResult({ code: 1, stderr: ' warn ', timedOut: false }, { text: '完成', isError: false });
+  assert.equal(a.ok, true);
+  assert.equal(a.text, '完成');
+  assert.equal(a.error, undefined);
+  assert.equal(a.exitCode, 1);
+  assert.equal(a.stderr, 'warn');
+
+  // (b) 结束事件报错，退出码 0：算失败，错误里带结果文本
+  const b = toStreamRunResult({ code: 0, stderr: '', timedOut: false }, { text: '出错了', isError: true });
+  assert.equal(b.ok, false);
+  assert.equal(b.text, '');
+  assert.match(b.error, /出错了/);
+
+  // (c) 超时且没有结束事件：报超时
+  const c = toStreamRunResult({ code: null, stderr: '', timedOut: true }, null);
+  assert.equal(c.ok, false);
+  assert.equal(c.timedOut, true);
+  assert.equal(c.error, '执行超时，已终止');
+
+  // (d) 没有结束事件且退出码 0：报没有结束事件
+  const d = toStreamRunResult({ code: 0, stderr: '', timedOut: false }, null);
+  assert.equal(d.ok, false);
+  assert.match(d.error, /没有结束事件/);
+});
+
+test('parseStreamLine：意外结构一律返回空文本，不抛错', () => {
+  assert.deepEqual(parseStreamLine('null'), { texts: [] });
+  assert.deepEqual(parseStreamLine('42'), { texts: [] });
+  assert.deepEqual(parseStreamLine('"text"'), { texts: [] });
+  assert.deepEqual(parseStreamLine(JSON.stringify({ type: 'assistant', message: { content: '字符串' } })), { texts: [] });
+  assert.deepEqual(parseStreamLine(JSON.stringify({ type: 'assistant' })), { texts: [] });
+  assert.deepEqual(
+    parseStreamLine(JSON.stringify({ type: 'assistant', message: { content: [null, 3, { type: 'text', text: '好' }] } })),
+    { texts: ['好'] },
+  );
+});
+
+test('流式收集：onOutput 抛错不丢同一段里的结束事件，也不中断后续行', () => {
+  const assistant = (t) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: t }] } });
+  const result = JSON.stringify({ type: 'result', result: '完成', is_error: false });
+  const seen = [];
+  const collector = createStreamCollector((text) => {
+    seen.push(text);
+    if (seen.length === 1) throw new Error('boom');
+  });
+  collector.push([assistant('甲'), assistant('乙'), result, ''].join('\n'));
+  collector.end();
+  assert.deepEqual(seen, ['甲\n', '乙\n']);
+  assert.deepEqual(collector.final(), { text: '完成', isError: false });
+
+  // 末尾没有换行的最后一行由 end() 处理，onOutput 抛错也不让 end() 抛出
+  const tail = createStreamCollector(() => {
+    throw new Error('boom');
+  });
+  tail.push([assistant('丙'), result].join('\n'));
+  assert.doesNotThrow(() => tail.end());
+  assert.deepEqual(tail.final(), { text: '完成', isError: false });
+});
+
+test('claude 流式结果：超时时丢弃结束事件，仍报超时', () => {
+  const r = toStreamRunResult({ code: null, stderr: '', timedOut: true }, { text: '完成', isError: false });
+  assert.equal(r.ok, false);
+  assert.equal(r.timedOut, true);
+  assert.equal(r.error, '执行超时，已终止');
 });

@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, truncate } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { makeEvent } from '@agentteam/protocol';
 
@@ -13,9 +13,10 @@ async function readAll(file) {
     return [];
   }
   // 最后一行没有换行结尾说明上次写到一半就崩溃了：截掉残片，否则下一次追加会和它粘成一行。
+  // 用 truncate 而不是整文件重写：修复过程中再崩溃也不会丢掉整份日志。
   if (text && !text.endsWith('\n')) {
     text = text.slice(0, text.lastIndexOf('\n') + 1);
-    await writeFile(file, text, 'utf8');
+    await truncate(file, Buffer.byteLength(text, 'utf8'));
   }
   const events = [];
   for (const line of text.split('\n')) {
@@ -35,7 +36,7 @@ export async function createEventLog(root) {
   const file = join(root, EVENTS_FILE);
   await mkdir(dirname(file), { recursive: true });
   const events = await readAll(file);
-  let seq = events.length ? events[events.length - 1].seq : 0;
+  let seq = events.reduce((max, e) => Math.max(max, e.seq), 0);
   const listeners = new Set();
   // 写盘串行排队，保证文件里的顺序与 seq 一致；出错记下来，由 flush 抛出。
   let writing = Promise.resolve();
@@ -70,7 +71,11 @@ export async function createEventLog(root) {
     },
     async flush() {
       await writing;
-      if (writeError) throw writeError;
+      if (writeError) {
+        const err = writeError;
+        writeError = null;
+        throw err;
+      }
     },
     get lastSeq() {
       return seq;

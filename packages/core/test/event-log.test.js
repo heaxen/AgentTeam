@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createEventLog, EVENTS_FILE } from '../src/store/events.js';
@@ -92,4 +92,26 @@ test('非法事件在 emit 时直接抛错，不占用序号', async () => {
   const log = await createEventLog(await project());
   assert.throws(() => log.emit('role.failed', { role: 'qa' }), /缺少字段 error/);
   assert.equal(log.lastSeq, 0);
+});
+
+test('序号取文件里的最大值，而不是最后一行的值', async () => {
+  const root = await project();
+  await mkdir(join(root, 'team'), { recursive: true });
+  const line = (seq) => JSON.stringify({ v: 1, seq, time: new Date().toISOString(), type: 'role.finished', role: 'x' });
+  await writeFile(join(root, EVENTS_FILE), `${line(1)}\n${line(5)}\n${line(3)}\n`, 'utf8');
+  const log = await createEventLog(root);
+  assert.equal(log.lastSeq, 5);
+  assert.equal(log.emit('role.finished', { role: 'y' }).seq, 6);
+});
+
+test('flush 抛出写盘错误后会清除它，之后的 flush 可以正常工作', async () => {
+  const root = await project();
+  const log = await createEventLog(root);
+  // 让目标路径是一个目录，追加写入必然失败。
+  await mkdir(join(root, EVENTS_FILE), { recursive: true });
+  log.emit('role.finished', { role: 'a' });
+  await assert.rejects(log.flush());
+  await rm(join(root, EVENTS_FILE), { recursive: true });
+  log.emit('role.finished', { role: 'b' });
+  await log.flush();
 });

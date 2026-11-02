@@ -58,3 +58,8 @@ test('多出来的字段不影响校验（旧客户端可以忽略新字段）',
   const event = makeEvent('role.started', { role: 'qa', agent: 'claude', model: null, future: 1 }, { seq: 2 });
   assert.equal(event.future, 1);
 });
+
+test('makeEvent 缺少 seq 时给出明确错误', () => {
+  assert.throws(() => makeEvent('role.finished', { role: 'x' }), /makeEvent 需要 \{ seq \}/);
+  assert.throws(() => makeEvent('role.finished', { role: 'x' }, {}), /makeEvent 需要 \{ seq \}/);
+});

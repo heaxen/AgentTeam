@@ -30,6 +30,7 @@ export function validateEvent(event) {
 }
 
 // 业务数据放在前面展开，保证 v、seq、time、type 不会被它覆盖。
-export function makeEvent(type, data, { seq, time = new Date().toISOString() }) {
+export function makeEvent(type, data, { seq, time = new Date().toISOString() } = {}) {
+  if (seq === undefined) throw new Error('makeEvent 需要 { seq }');
   return validateEvent({ ...data, v: PROTOCOL_VERSION, seq, time, type });
 }

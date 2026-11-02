@@ -68,6 +68,16 @@ export async function createSession({ root, dispatch = dispatchTask }) {
         log.emit('message', { from: 'team', text: reply.text ?? '' });
         log.emit('stage.changed', { stage });
         return reply;
+      } catch (err) {
+        // 工作流本身出错：也要给客户端一个收尾记录，抛出的仍是原始错误。
+        try {
+          const stage = (await loadState(root)).stage ?? 'idle';
+          log.emit('message', { from: 'team', text: `执行出错：${err?.message ?? err}` });
+          log.emit('stage.changed', { stage });
+        } catch {
+          // 收尾失败不能盖掉原始错误。
+        }
+        throw err;
       } finally {
         running = false;
       }
