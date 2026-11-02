@@ -37,6 +37,7 @@
 
 ### 变更
 - 角色合并：「需求分析」与「原型设计」合并为「需求与原型」（`req-analyst`），需求文档与原型由同一会话产出；「UI 开发」（`ui-dev`）移除，其职责（视觉规范、设计 token、通用组件）并入「前端开发」（`frontend-dev`）。删除 `prompts/prototype.md`、`prompts/ui-dev.md`。自动流程仍只产出 `REQ-NNN.md`，原型暂不纳入自动流程。`team/assignments.json` 中残留的 `prototype`、`ui-dev` 键会被忽略。
+- 步骤完成的判定收紧：后端、前端两步除产物文件外，还必须改动应用代码（`docs/`、`team/`、`tests/` 以外的文件），否则本步失败，不进入测试与交付。测试报告结论为"不可验收"时本步失败，不写交付报告。修复 `npm-demo` 类情况：只写了阻塞说明却显示"全部完成"。
 - 命令精简：`agentteam run`、`doctor`、`config` 已移除，改用对话与 `agentteam` 的脚本子命令。`team`、`agents`、`auth`、`assign`、`dispatch` 保留给脚本使用，不在 `--help` 中列出。
 - 移除旧的全局模式配置（`~/.agentteam/config.json` 与 `src/providers/`），凭证统一保存在 `~/.agentteam/credentials.json`。
 

@@ -13,7 +13,8 @@ async function project() {
 
 // 假的派发：读取任务卡的"交付"清单，写出对应文件。architect 的摘要写入两个方案。
 // failOnce：指定某个角色第一次执行失败，用来测试重试。
-function fakeDispatch({ failOnce = [] } = {}) {
+// noCode：指定实现角色只写文档、不改应用代码（模拟被阻塞）。trBody：覆盖测试报告的内容。
+function fakeDispatch({ failOnce = [], noCode = [], trBody } = {}) {
   const calls = [];
   const fails = new Set(failOnce);
   const dispatch = async ({ root, taskId, role }) => {
@@ -25,15 +26,25 @@ function fakeDispatch({ failOnce = [] } = {}) {
     const card = await readFile(join(root, 'team', 'tasks', `${taskId}.md`), 'utf8');
     const lines = card.split('\n');
     const outs = lines.slice(lines.indexOf('交付：') + 1).filter((l) => l.startsWith('- ')).map((l) => l.slice(2));
+    const changed = [];
     for (const out of outs) {
       const full = join(root, out);
       await mkdir(join(full, '..'), { recursive: true });
       const body = out.endsWith('-summary.md')
         ? '# 摘要\n\n## 方案 A：Go + Vue\n\n## 方案 B：Node + React\n'
-        : `# ${out}\n`;
+        : out.startsWith('tests/reports/') && trBody
+          ? trBody
+          : `# ${out}\n`;
       await writeFile(full, body, 'utf8');
+      changed.push(out);
     }
-    return { ok: true, text: '', changed: outs, log: 'team/runs/fake.md' };
+    if ((role === 'backend-dev' || role === 'frontend-dev') && !noCode.includes(role)) {
+      const code = `src/${role}.js`;
+      await mkdir(join(root, 'src'), { recursive: true });
+      await writeFile(join(root, code), '// code\n', 'utf8');
+      changed.push(code);
+    }
+    return { ok: true, text: '', changed: changed.sort(), log: 'team/runs/fake.md' };
   };
   return { dispatch, calls };
 }
@@ -73,6 +84,35 @@ test('完整主线：需求 → 方案（自动列出）→ 选 B → 执行后�
   const state = await loadState(root);
   assert.equal(state.choice, 'B');
   assert.deepEqual(state.buildDone, ['backend-dev', 'frontend-dev', 'qa']);
+});
+
+test('前端只写了实现说明、没有改动应用代码：本步失败，不进入测试与交付', async () => {
+  const root = await project();
+  const fake = fakeDispatch({ noCode: ['frontend-dev'] });
+  const deps = { dispatch: fake.dispatch };
+  await say(root, deps, '做一个订单导出功能');
+  const r = await say(root, deps, '2');
+  assert.equal(r.stage, 'failed');
+  assert.match(r.text, /前端开发只写了文档，没有改动应用代码/);
+  assert.deepEqual(fake.calls, ['req-analyst', 'architect', 'backend-dev', 'frontend-dev']);
+  assert.deepEqual((await loadState(root)).buildDone, ['backend-dev']);
+  await assert.rejects(readFile(join(root, 'docs', 'delivery', 'DELIVERY-001.md'), 'utf8'));
+});
+
+test('测试结论为不可验收：本步失败，不写交付报告；修好后重试才交付', async () => {
+  const root = await project();
+  const rejected = '# TR\n\n## 结论\n\n**不可验收。** G4 不通过，未执行测试。\n';
+  const fake = fakeDispatch({ trBody: rejected });
+  const deps = { dispatch: fake.dispatch };
+  await say(root, deps, '做一个订单导出功能');
+  const r = await say(root, deps, '2');
+  assert.equal(r.stage, 'failed');
+  assert.match(r.text, /测试的结论为不可验收/);
+  await assert.rejects(readFile(join(root, 'docs', 'delivery', 'DELIVERY-001.md'), 'utf8'));
+
+  await writeFile(join(root, 'tests', 'reports', 'TR-001.md'), '# TR\n\n结论：可验收，8 / 8 条通过\n', 'utf8');
+  const retry = await say(root, { dispatch: fakeDispatch().dispatch }, '重试');
+  assert.equal(retry.stage, 'delivered');
 });
 
 test('只有一个方案也直接列出，可以选择或讨论', async () => {

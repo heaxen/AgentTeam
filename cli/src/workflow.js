@@ -136,6 +136,12 @@ function replyExcerpt(text) {
   return flat ? `。agent 说明：${flat.slice(0, 160)}` : '';
 }
 
+// 团队文件（文档、团队配置、测试报告）以外的文件视为应用代码。
+const TEAM_DIRS = ['docs/', 'team/', 'tests/'];
+const isCodePath = (path) => !TEAM_DIRS.some((dir) => path.startsWith(dir));
+// 测试报告里的结论写的是"不可验收"时，本步不算完成。结论可以写在标题下一行（"## 结论"后面），所以允许中间有换行。
+const NOT_ACCEPTABLE = /结论[\s\S]{0,20}?不可验收/;
+
 // 派发一个角色，并检查它是否真的交付了清单中的文件（以文件为准，不以汇报为准）。
 async function runRole(root, deps, progress, spec) {
   progress(`进度：${ROLE_NAMES[spec.role]}`);
@@ -156,6 +162,14 @@ async function runRole(root, deps, progress, spec) {
   if (missing.length) {
     // 没有生成文件时，agent 通常已经在回复里说明了原因（如权限不足），把它带给用户。
     return { ok: false, error: `${ROLE_NAMES[spec.role]}没有生成：${missing.join('、')}${replyExcerpt(result.text)}`, log: result.log };
+  }
+  // 产物文件存在不等于任务完成：实现角色只写了文档、没有改动应用代码，说明它其实被卡住了（缺档案、缺权限等）。
+  if (spec.requireCode && !(result.changed ?? []).some(isCodePath)) {
+    return { ok: false, error: `${ROLE_NAMES[spec.role]}只写了文档，没有改动应用代码，本步不算完成${replyExcerpt(result.text)}`, log: result.log };
+  }
+  // 测试结论为不可验收时不进入交付：交付报告只在验收通过后才写。
+  if (spec.reject && spec.reject.test(await readFile(join(root, spec.verdictFile), 'utf8'))) {
+    return { ok: false, error: `${ROLE_NAMES[spec.role]}的结论为不可验收（${spec.verdictFile}），本步不算完成${replyExcerpt(result.text)}`, log: result.log };
   }
   return { ok: true, log: result.log };
 }
@@ -248,9 +262,9 @@ async function doBuild(root, state, deps, progress) {
   const n = state.req.slice(4);
   const choice = `方案 ${state.choice}`;
   const specs = {
-    'backend-dev': { out: `docs/backend/IMPL-${n}.md`, goal: `按${choice}实现后端，并写实现记录` },
-    'frontend-dev': { out: `docs/frontend/IMPL-${n}.md`, goal: `按${choice}实现前端，并写实现记录` },
-    qa: { out: `tests/reports/TR-${n}.md`, goal: '按需求验收条件测试，并写测试报告' },
+    'backend-dev': { out: `docs/backend/IMPL-${n}.md`, goal: `按${choice}实现后端，并写实现记录`, code: true },
+    'frontend-dev': { out: `docs/frontend/IMPL-${n}.md`, goal: `按${choice}实现前端，并写实现记录`, code: true },
+    qa: { out: `tests/reports/TR-${n}.md`, goal: '按需求验收条件测试，并写测试报告', reject: NOT_ACCEPTABLE },
   };
 
   for (const role of BUILD_ORDER) {
@@ -266,6 +280,9 @@ async function doBuild(root, state, deps, progress) {
       stack,
       inputs: [`需求：docs/requirements/${state.req}.md`, `架构摘要：docs/architecture/${state.arch}-summary.md`, `已选方案：${choice}`],
       outputs: [spec.out],
+      requireCode: Boolean(spec.code),
+      reject: spec.reject,
+      verdictFile: spec.out,
     });
     if (!result.ok) return result;
     state.buildDone.push(role);
