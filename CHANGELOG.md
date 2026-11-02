@@ -40,8 +40,11 @@
 - 步骤完成的判定收紧：后端、前端两步除产物文件外，还必须改动应用代码（`docs/`、`team/`、`tests/` 以外的文件），否则本步失败，不进入测试与交付。测试报告结论为"不可验收"时本步失败，不写交付报告。修复 `npm-demo` 类情况：只写了阻塞说明却显示"全部完成"。
 - 命令精简：`agentteam run`、`doctor`、`config` 已移除，改用对话与 `agentteam` 的脚本子命令。`team`、`agents`、`auth`、`assign`、`dispatch` 保留给脚本使用，不在 `--help` 中列出。
 - 移除旧的全局模式配置（`~/.agentteam/config.json` 与 `src/providers/`），凭证统一保存在 `~/.agentteam/credentials.json`。
+- 仓库改为 npm workspaces：适配器、状态机、派发、凭证迁入 `packages/core`（`@agentteam/core`），新增 `packages/protocol`（`@agentteam/protocol`）。`cli/` 暂时保留终端交互代码，被迁走的模块在 `cli/src` 里留转发文件，对外行为不变。迁移期间 `cli` 不能单独发布。
+- 引擎新增：事件日志（`team/events.jsonl`，每条事件带递增序号，可按序号续传）、各 agent 的实时文本输出（适配器 `run` 新增可选参数 `onOutput`）、每个项目目录一个运行会话（`Session`，替代模块级暂停变量；工作流新增可注入的 `deps.shouldPause`，终端版的 `requestPause()` 不受影响）。
 
 ### 说明
+- 未验证：codex、gemini、deepseek 的实时输出未用真实 agent 跑过；claude 的流式输出用采集到的真实样本只测了解析，经 `dispatchTask` 的端到端运行尚未验证。
 - 未验证：对话流程尚未用真实 agent 端到端跑通；交互界面（编号列表、masked 输入、各 agent 的登录启动）只在非交互环境测试过；codex 的 `-c model_reasoning_effort`、claude 的 `--effort`、deepseek 的 thinking 参数均未实跑。
 - 交付后的调整（A/B/C/D 类）推迟到下一版。
 

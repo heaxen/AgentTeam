@@ -50,7 +50,7 @@ agentteam/
 │  ├─ core/src/
 │  │  ├─ adapters/             claude、codex、gemini、deepseek
 │  │  ├─ workflow/             状态机
-│  │  ├─ roles/                角色提示词
+│  │  ├─ templates/            团队公约与角色提示词（由 scripts/sync-templates.js 从仓库根目录复制，根目录是唯一来源）
 │  │  ├─ session/              每个项目目录一个运行会话
 │  │  ├─ store/                state.json、events.jsonl、runs 的读写
 │  │  └─ credentials/          凭证与认证
@@ -82,11 +82,11 @@ agentteam/
 
 | 事件 | 含义 |
 | --- | --- |
-| `stage.changed` | 流程阶段变化，取值沿用现有 `stage`：`idle`、`arch_review`、`delivered`、`closed`、`failed`、`paused`。执行中各阶段的取值在迁移时从 `workflow.js` 核对后补入协议，目前未确认 |
+| `stage.changed` | 流程阶段变化，取值沿用现有 `stage`：`idle`、`arch_review`、`delivered`、`closed`、`failed`、`paused`（已对照 `workflow.js` 核实）。工作流没有"执行中"阶段，运行状态由 `role.started` / `role.finished` / `role.failed` 事件和 `/api/state` 里的 `running` 字段表示 |
 | `role.started` / `role.finished` / `role.failed` | 角色开始、完成、失败，带 agent、模型、强度；失败带原因 |
 | `role.output` | 实时文本片段，带 `role`、`chunk` |
 | `role.files` | 角色结束时的产物与改动文件清单 |
-| `message` | 团队对用户的回复，对应 `conversation.md` |
+| `message` | 一条对话，带 `from`（`user` 或 `team`）与 `text`，对应 `conversation.md` |
 
 事件同时落盘到 `team/events.jsonl`。刷新页面或换设备连接时，可从落盘事件重放出当前视图。
 
@@ -119,6 +119,7 @@ agentteam/
 - 适配器失败、超时、认证缺失、未改应用代码，沿用现有"步骤失败，可重试"逻辑，并发出 `role.failed`。
 - SSE 断线后客户端带 `after=<seq>` 重连。服务重启后从 `state.json` 与 `events.jsonl` 恢复，已完成的角色不重做。
 - 服务默认只监听 `127.0.0.1`。开放远程访问前必须先加访问令牌（见遗留议题）。
+- 取消运行中的角色需要把 AbortSignal 贯穿 runProcess，见 backlog B-005，随 server 计划实现。
 
 ## 7. 测试策略
 
