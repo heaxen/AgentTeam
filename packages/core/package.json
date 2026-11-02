@@ -1,0 +1,14 @@
+{
+  "name": "@agentteam/core",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./*": "./src/*.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": { "@agentteam/protocol": "*" },
+  "scripts": {
+    "sync": "node scripts/sync-templates.js",
+    "pretest": "npm run sync",
+    "test": "node --test"
+  }
+}

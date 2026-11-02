@@ -1,0 +1,8 @@
+{
+  "name": "agentteam-workspace",
+  "private": true,
+  "workspaces": ["cli", "packages/*"],
+  "scripts": {
+    "test": "npm run sync -w @agentteam/core && npm test --workspaces --if-present"
+  }
+}

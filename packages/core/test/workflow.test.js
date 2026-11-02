@@ -439,3 +439,23 @@ test('角色没有生成文件时，失败说明里带上 agent 的回复，方�
   assert.match(r.text, /没有生成/);
   assert.match(r.text, /agent 说明：读取 AGENTS\.md 被拒绝：尚未授予读取权限/);
 });
+
+test('deps.shouldPause 可以替代全局暂停标志', async () => {
+  const root = await project();
+  const { dispatch } = fakeDispatch();
+  let pause = false;
+  const deps = {
+    // 需求角色做完后才请求暂停，流程应在进入架构师之前停下。
+    dispatch: async (args) => {
+      const result = await dispatch(args);
+      pause = true;
+      return result;
+    },
+    shouldPause: () => pause,
+  };
+
+  const reply = await handleMessage({ root, text: '做个登录功能', deps });
+  assert.equal(reply.stage, 'paused');
+  const state = await loadState(root);
+  assert.equal(state.pending.step, 'architecture');
+});

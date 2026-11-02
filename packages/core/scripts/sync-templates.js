@@ -2,11 +2,11 @@ import { copyFile, mkdir, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// 从仓库根目录的团队文件生成 cli/templates/。
+// 从仓库根目录的团队文件生成 packages/core/templates/。
 // 根目录是唯一来源，templates/ 由脚本生成、不提交，避免两份副本漂移。
-const CLI_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const REPO_ROOT = join(CLI_ROOT, '..');
-const TEMPLATES = join(CLI_ROOT, 'templates');
+const CORE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const REPO_ROOT = join(CORE_ROOT, '..', '..');
+const TEMPLATES = join(CORE_ROOT, 'templates');
 
 const FILES = ['AGENTS.md', 'AI开发团队角色与协作流程.md'];
 

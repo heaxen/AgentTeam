@@ -8,20 +8,17 @@
   },
   "files": [
     "bin",
-    "src",
-    "templates"
+    "src"
   ],
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "sync": "node scripts/sync-templates.js",
-    "pretest": "npm run sync",
-    "test": "node --test",
-    "prepack": "npm run sync"
+    "test": "node --test"
   },
   "license": "MIT",
   "dependencies": {
+    "@agentteam/core": "*",
     "@anthropic-ai/sdk": "^0.40.0"
   }
 }

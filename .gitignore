@@ -1,2 +1,6 @@
 # NTA 项目的技术栈档案：仅作个人参考，不公开
 stacks/nta.md
+
+# 依赖，以及由脚本从仓库根目录复制出来的团队文件副本（根目录是唯一来源）
+node_modules/
+packages/core/templates/
