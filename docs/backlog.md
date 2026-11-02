@@ -27,4 +27,14 @@
 ### B-005 取消运行中的角色
 - 背景：spec 第 6 节要求取消时强制终止子进程，现有代码只有暂停（当前角色写完后停下），没有取消。
 - 方案方向：`runProcess` 接收 `AbortSignal`，触发时调用 `killTree`；Session 增加 `cancel()`。
-- 计划：随 server 计划实现。
+- 状态：已实现（server 计划 Task 1：runProcess 接收 AbortSignal，Session.cancel()，POST /api/cancel）。
+
+### B-006 同一项目目录的跨进程单会话
+- 背景：spec 第 6 节要求每个项目目录一个运行会话，现在的实现只保证单个服务进程内唯一。两个 `serve.js` 进程（不同端口）或服务加终端 CLI 同时指向同一目录时，会各自分配 `seq` 并追加同一个 `team/events.jsonl`，序号会冲突。
+- 方案方向：启动时在项目目录加锁文件，或把服务绑定到固定端口并在启动时检测已有实例。
+- 状态：未开始（第一版不处理，需在文档中说明）。
+
+### B-007 重启后的"中断角色"标记
+- 背景：服务在角色运行中崩溃后，`events.jsonl` 里会留下没有终态事件（`role.finished` / `role.failed`）的 `role.started`。
+- 方案方向：web 客户端把"`running` 为 false 但存在未收尾的 `role.started`"显示为"已中断，可重试"；或由 core 在启动时补发一条终态事件。
+- 状态：未开始（随 web 计划处理）。

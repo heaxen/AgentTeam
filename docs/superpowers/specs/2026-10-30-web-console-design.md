@@ -96,11 +96,14 @@ agentteam/
 | --- | --- |
 | `GET /api/state` | 当前完整状态，首次加载和断线重连时调用 |
 | `GET /api/events?after=<seq>` | SSE 事件流，按 `seq` 续传 |
-| `POST /api/message` | 提需求、选方案、给意见、继续、重试、取消，语义沿用现有 `handleMessage` |
+| `POST /api/message` | 提需求、选方案、给意见、继续、重试，语义沿用现有 `handleMessage`。立即返回 202，进度与结果经事件流送达 |
+| `POST /api/pause` | 请求暂停：当前角色写完后停下。没有运行中的流程返回 409 |
+| `POST /api/cancel` | 取消：强制终止当前角色的进程树。没有运行中的流程返回 409 |
+| `GET /api/agents` | 可选的 agent、模型、思考强度，以及是否已认证（不含凭证内容） |
 | `GET /api/roles`、`PUT /api/roles` | 读取与修改每个角色的 agent、模型、强度 |
-| `POST /api/auth/:agent` | 认证 |
+| `POST /api/auth/:agent` | 认证。`{ method: 'api', apiKey }` 保存 API key；`{ method: 'confirm' }` 记录用户已在终端完成订阅登录（订阅登录需要终端交互，无法经 HTTP 完成） |
 
-同一项目同时只允许一个运行中的流程，第二个请求返回 409。
+同一项目同时只允许一个运行中的流程，第二个请求返回 409。所有请求的 `Host` 必须是本机地址，带 `Origin` 时必须是本机页面，否则返回 403（浏览器里的任意网页都能向 127.0.0.1 发请求，而服务能指挥带编辑权限的 agent）。请求体上限 64 KB。
 
 ## 5. 实时输出流
 
@@ -119,7 +122,7 @@ agentteam/
 - 适配器失败、超时、认证缺失、未改应用代码，沿用现有"步骤失败，可重试"逻辑，并发出 `role.failed`。
 - SSE 断线后客户端带 `after=<seq>` 重连。服务重启后从 `state.json` 与 `events.jsonl` 恢复，已完成的角色不重做。
 - 服务默认只监听 `127.0.0.1`。开放远程访问前必须先加访问令牌（见遗留议题）。
-- 取消运行中的角色需要把 AbortSignal 贯穿 runProcess，见 backlog B-005，随 server 计划实现。
+- 取消运行中的角色：`runProcess` 接收 `AbortSignal`，触发后终止子进程树；`Session.cancel()` 同时置暂停标志，被取消的角色记为失败（可重试），流程不再继续往下走。
 
 ## 7. 测试策略
 
