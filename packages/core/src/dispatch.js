@@ -158,6 +158,7 @@ export async function dispatchTask({
   credentialsFile,
   emit = () => {},
   onOutput,
+  signal,
 }) {
   assertTaskId(taskId);
   assertRole(role);
@@ -184,7 +185,7 @@ export async function dispatchTask({
   const before = await snapshot(root);
   const startedAt = new Date();
   // 团队公约与角色说明书在 CLI 安装目录里，不在项目目录内，需要单独授权读取。
-  const result = await adapter.run({ prompt, cwd: root, model, effort, credential, timeoutMs, allowedCommands, addDirs: [TEMPLATES], onOutput });
+  const result = await adapter.run({ prompt, cwd: root, model, effort, credential, timeoutMs, allowedCommands, addDirs: [TEMPLATES], onOutput, signal });
   const endedAt = new Date();
   const changed = diffSnapshots(before, await snapshot(root));
 

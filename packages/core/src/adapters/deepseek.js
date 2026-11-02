@@ -85,7 +85,7 @@ export function buildTools(allowedCommands) {
   ];
 }
 
-async function runTool(name, args, { root, cwd, allowedCommands, timeoutMs }) {
+async function runTool(name, args, { root, cwd, allowedCommands, timeoutMs, signal }) {
   switch (name) {
     case 'read_file':
       return clip(await readFile(resolveInside(root, args.path), 'utf8'));
@@ -104,13 +104,19 @@ async function runTool(name, args, { root, cwd, allowedCommands, timeoutMs }) {
       if (!allowedCommands.includes(command)) {
         throw new Error(`命令未被项目允许：${command}。允许的命令：${allowedCommands.join('、') || '无'}`);
       }
-      const proc = await runProcess({ command, cwd, env: process.env, input: '', timeoutMs });
+      const proc = await runProcess({ command, cwd, env: process.env, input: '', timeoutMs, signal });
       const output = `${proc.stdout}${proc.stderr}`;
       return clip(`退出码 ${proc.code}\n${output}`);
     }
     default:
       throw new Error(`未知工具：${name}`);
   }
+}
+
+// 用户取消和超时都要能中断请求。AbortSignal.any 需要 Node 20.3 以上；更旧的版本只保留超时，取消在下一轮开始前生效。
+function combineSignals(cancelSignal, timeoutSignal) {
+  if (cancelSignal && typeof AbortSignal.any === 'function') return AbortSignal.any([cancelSignal, timeoutSignal]);
+  return timeoutSignal;
 }
 
 async function chat({ apiKey, model, effort, messages, tools, fetchImpl, signal }) {
@@ -135,7 +141,7 @@ export const deepseekAdapter = {
   id: 'deepseek',
   canEditFiles: true,
 
-  async run({ prompt, cwd, model, effort, credential = {}, timeoutMs, allowedCommands = [], fetchImpl = fetch, onOutput }) {
+  async run({ prompt, cwd, model, effort, credential = {}, timeoutMs, allowedCommands = [], fetchImpl = fetch, onOutput, signal }) {
     const apiKey = credential.apiKey || process.env.DEEPSEEK_API_KEY;
     if (!apiKey) return failure('缺少 DeepSeek API key：请运行 agentteam auth deepseek');
     const chosenModel = model || DEFAULT_MODEL;
@@ -143,10 +149,11 @@ export const deepseekAdapter = {
     const deadline = Date.now() + timeoutMs;
     const tools = buildTools(allowedCommands);
     const messages = [{ role: 'user', content: prompt }];
-    const toolContext = { root: cwd, cwd, allowedCommands, timeoutMs };
+    const toolContext = { root: cwd, cwd, allowedCommands, timeoutMs, signal };
 
     try {
       for (let step = 0; step < MAX_STEPS; step++) {
+        if (signal?.aborted) return failure('已取消');
         const remaining = deadline - Date.now();
         if (remaining <= 0) return failure('执行超时，已终止', true);
 
@@ -157,7 +164,7 @@ export const deepseekAdapter = {
           messages,
           tools,
           fetchImpl,
-          signal: AbortSignal.timeout(remaining),
+          signal: combineSignals(signal, AbortSignal.timeout(remaining)),
         });
         messages.push(message);
         if (onOutput && message.content) {
@@ -173,6 +180,8 @@ export const deepseekAdapter = {
         }
 
         for (const call of message.tool_calls) {
+          // 取消后同一批里剩下的工具不再执行（例如 write_file 不能再写仓库）。
+          if (signal?.aborted) return failure('已取消');
           let output;
           try {
             const args = JSON.parse(call.function.arguments || '{}');
@@ -185,6 +194,7 @@ export const deepseekAdapter = {
       }
       return failure(`超过 ${MAX_STEPS} 步仍未完成`);
     } catch (err) {
+      if (signal?.aborted) return failure('已取消');
       const timedOut = err.name === 'TimeoutError' || err.name === 'AbortError';
       return failure(timedOut ? '执行超时，已终止' : err.message, timedOut);
     }

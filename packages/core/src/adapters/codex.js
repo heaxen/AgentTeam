@@ -21,7 +21,7 @@ export const codexAdapter = {
   id: 'codex',
   canEditFiles: true,
 
-  async run({ prompt, cwd, model, effort, timeoutMs, onOutput }) {
+  async run({ prompt, cwd, model, effort, timeoutMs, onOutput, signal }) {
     const outputFile = join(tmpdir(), `agentteam-codex-${randomUUID()}.txt`);
     const out = trackOutput(onOutput);
     try {
@@ -32,6 +32,7 @@ export const codexAdapter = {
         input: prompt,
         timeoutMs,
         onChunk: out.onChunk,
+        signal,
       });
       let text = '';
       try {

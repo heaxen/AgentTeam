@@ -155,3 +155,52 @@ test('工作流本身出错时，send 抛出原始错误，并留下收尾事件
   assert.equal(events.at(-1).type, 'stage.changed');
   assert.equal((await session.state()).running, false);
 });
+
+test('cancel 中断运行中的角色：返回 true，角色记为失败，随后可以再次运行', async () => {
+  const root = await project();
+  const inner = fakeDispatch({ fail: ['req-analyst'] });
+  const session = await createSession({
+    root,
+    dispatch: async (args) => {
+      if (args.role === 'req-analyst') {
+        // 模拟真实适配器：等到 signal 触发再返回失败结果。
+        await new Promise((resolve) => args.signal.addEventListener('abort', resolve, { once: true }));
+      }
+      return inner(args);
+    },
+  });
+
+  assert.equal(session.cancel(), false, '没有运行时取消返回 false');
+  assert.equal(session.isRunning(), false);
+
+  const started = new Promise((resolve) => {
+    const off = session.log.subscribe((event) => {
+      if (event.type === 'role.started') {
+        off();
+        resolve();
+      }
+    });
+  });
+  const sending = session.send('做个登录功能');
+  await started;
+  assert.equal(session.isRunning(), true);
+  assert.equal(session.cancel(), true);
+  await sending;
+
+  assert.equal(session.isRunning(), false);
+  const failed = session.log.after(0).filter((e) => e.type === 'role.failed');
+  assert.deepEqual(failed.map((e) => e.role), ['req-analyst']);
+  // 取消只影响这一次运行：再次发送不会被拒绝。
+  const again = session.send('做个登录功能');
+  await assert.doesNotReject(again);
+});
+
+test('state() 的 lastSeq 包含调用前已发出的事件，且空闲时 running 为 false', async () => {
+  const root = await project();
+  const session = await createSession({ root, dispatch: fakeDispatch() });
+  session.log.emit('message', { from: 'team', text: '你好' });
+  const expected = session.log.lastSeq;
+  const state = await session.state();
+  assert.equal(state.lastSeq, expected);
+  assert.equal(state.running, false);
+});

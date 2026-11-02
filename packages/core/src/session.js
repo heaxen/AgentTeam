@@ -16,6 +16,7 @@ export async function createSession({ root, dispatch = dispatchTask }) {
   const log = await createEventLog(root);
   let running = false;
   let pause = false;
+  let controller = null;
 
   // 包一层派发：把角色的开始、实时输出、产物、结果变成事件，工作流本身不需要知道事件的存在。
   async function observedDispatch(args) {
@@ -38,7 +39,7 @@ export async function createSession({ root, dispatch = dispatchTask }) {
           // 丢掉这一段输出，不影响派发。
         }
       };
-      result = await dispatch({ ...args, onOutput });
+      result = await dispatch({ ...args, onOutput, signal: controller?.signal });
     } catch (err) {
       // 派发前的检查（未认证、未分配等）会抛错：工作流会把它转成可重试的失败步骤，这里只负责留下事件。
       log.emit('role.failed', { role, error: err.message });
@@ -57,6 +58,7 @@ export async function createSession({ root, dispatch = dispatchTask }) {
       if (running) throw new BusyError();
       running = true;
       pause = false;
+      controller = new AbortController();
       try {
         log.emit('message', { from: 'user', text });
         const reply = await handleMessage({
@@ -79,8 +81,21 @@ export async function createSession({ root, dispatch = dispatchTask }) {
         }
         throw err;
       } finally {
+        controller = null;
         running = false;
       }
+    },
+
+    // 取消运行中的流程：强制终止当前角色的进程。同时置暂停标志，避免它结束后工作流继续往下走。
+    cancel() {
+      if (!running || !controller) return false;
+      pause = true;
+      controller.abort();
+      return true;
+    },
+
+    isRunning() {
+      return running;
     },
 
     // 返回是否为本次运行的首次请求（界面据此决定提示文字）。
@@ -91,7 +106,9 @@ export async function createSession({ root, dispatch = dispatchTask }) {
     },
 
     async state() {
-      return { ...(await loadState(root)), running, lastSeq: log.lastSeq };
+      // 先快照 running 与 lastSeq，再读状态文件：读取期间发出的事件不能让 lastSeq 比 stage 更新。
+      const snapshot = { running, lastSeq: log.lastSeq };
+      return { ...(await loadState(root)), ...snapshot };
     },
   };
 }

@@ -66,7 +66,8 @@ export function parseStreamLine(line) {
 // 流式模式下，结束事件（result）比进程退出码更权威：
 // 实测 claude 可能在 result 为成功时仍以非零码退出（stderr 只有模型名告警）。
 // 超时时不采信结束事件，仍报超时；没有结束事件时报错。
-export function toStreamRunResult({ code, stderr, timedOut }, final) {
+export function toStreamRunResult({ code, stderr, timedOut, cancelled }, final) {
+  if (cancelled) return toRunResult({ code, stderr, timedOut, cancelled }, '', undefined);
   // 超时一律报超时并丢弃结束事件：进程可能在输出完结果后卡住，不能当作正常结束。
   if (timedOut) return toRunResult({ code, stderr, timedOut }, '', undefined);
   if (!final) {
@@ -103,24 +104,26 @@ export const claudeAdapter = {
   id: 'claude',
   canEditFiles: true,
 
-  async run({ prompt, cwd, model, effort, credential = {}, timeoutMs, allowedCommands = [], addDirs = [], onOutput }) {
+  async run({ prompt, cwd, model, effort, credential = {}, timeoutMs, allowedCommands = [], addDirs = [], onOutput, signal }) {
     const stream = typeof onOutput === 'function';
     const collector = createStreamCollector(onOutput);
 
-    const { code, stdout, stderr, timedOut } = await runProcess({
+    const { code, stdout, stderr, timedOut, cancelled } = await runProcess({
       command: buildCommand({ model, effort, allowedCommands, addDirs, stream }),
       cwd,
       env: buildEnv(credential),
       input: prompt,
       timeoutMs,
       onChunk: stream ? (text) => collector.push(text) : undefined,
+      signal,
     });
 
     if (stream) {
       collector.end();
-      return toStreamRunResult({ code, stderr, timedOut }, collector.final());
+      return toStreamRunResult({ code, stderr, timedOut, cancelled }, collector.final());
     }
 
+    if (cancelled) return toRunResult({ code, stderr, timedOut, cancelled }, '', undefined);
     let parsed;
     try {
       parsed = JSON.parse(stdout);

@@ -4,25 +4,44 @@ import { spawn } from 'node:child_process';
 // command 只能是适配器拼好的固定字符串，其中的参数只来自白名单（见 assertSafeToken）。
 // 用户内容一律经 input（stdin）传入，不拼进命令行。
 // shell: true 是为了能启动 Windows 上的 .cmd 包装（如 claude.cmd）。
-export function runProcess({ command, cwd, env, input = '', timeoutMs, onChunk }) {
+export function runProcess({ command, cwd, env, input = '', timeoutMs, onChunk, signal }) {
   return new Promise((resolve, reject) => {
+    // 取消信号在启动前就已触发：不启动进程。
+    if (signal?.aborted) {
+      resolve({ code: null, stdout: '', stderr: '', timedOut: false, cancelled: true });
+      return;
+    }
     const child = spawn(command, { cwd, env, shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    // 一旦已经返回结果（取消、超时、关闭、出错），后续残留的输出不再转发给 onChunk。
+    let settled = false;
 
     const timer = setTimeout(() => {
       timedOut = true;
+      settled = true;
+      signal?.removeEventListener('abort', onAbort);
       killTree(child);
       // 不等 close：被杀掉的子进程可能仍占着管道，等它关闭会无限期挂起。
       resolve({ code: null, stdout, stderr, timedOut });
     }, timeoutMs);
+
+    // 取消：连同子进程树一起结束，不等 close（被杀的进程可能仍占着管道）。
+    const onAbort = () => {
+      settled = true;
+      clearTimeout(timer);
+      killTree(child);
+      resolve({ code: null, stdout, stderr, timedOut: false, cancelled: true });
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
 
     // 先设编码再挂监听：多字节字符被切在两段之间时，解码器会拼好，不会产生乱码。
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', (d) => {
       stdout += d;
+      if (settled) return;
       // 回调出错不能影响进程执行和结果。
       try {
         onChunk?.(d);
@@ -32,11 +51,15 @@ export function runProcess({ command, cwd, env, input = '', timeoutMs, onChunk }
     });
     child.stderr.on('data', (d) => (stderr += d));
     child.on('error', (err) => {
+      settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
       reject(err);
     });
     child.on('close', (code) => {
+      settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
       resolve({ code, stdout, stderr, timedOut });
     });
     // agent 提前退出时写入 stdin 会报 EPIPE，结果以退出码为准，这里忽略。
@@ -72,9 +95,10 @@ export function quotePath(path, label) {
 }
 
 // 把一次进程执行的结果整理成适配器统一的返回值。
-export function toRunResult({ code, stderr, timedOut }, text, errorMessage) {
-  const ok = !timedOut && code === 0 && !errorMessage;
+export function toRunResult({ code, stderr, timedOut, cancelled = false }, text, errorMessage) {
+  const ok = !cancelled && !timedOut && code === 0 && !errorMessage;
   let error = errorMessage;
+  if (!error && cancelled) error = '已取消';
   if (!error && timedOut) error = '执行超时，已终止';
   if (!error && code !== 0) error = `退出码 ${code}`;
   return { ok, text: ok ? text : '', exitCode: code, timedOut, error: ok ? undefined : error, stderr: stderr.trim() };

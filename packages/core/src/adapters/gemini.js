@@ -26,15 +26,17 @@ export const geminiAdapter = {
   id: 'gemini',
   canEditFiles: true,
 
-  async run({ prompt, cwd, model, credential = {}, timeoutMs, onOutput }) {
+  async run({ prompt, cwd, model, credential = {}, timeoutMs, onOutput, signal }) {
     const proc = await runProcess({
       command: buildCommand({ model }),
       cwd,
       env: buildEnv(credential),
       input: prompt,
       timeoutMs,
+      signal,
     });
 
+    if (proc.cancelled) return toRunResult(proc, '', undefined);
     let parsed;
     try {
       parsed = JSON.parse(proc.stdout);
