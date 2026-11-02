@@ -72,9 +72,9 @@ cli/
 
 Run（在仓库根目录 `C:\Users\22432\Desktop\AgentTeam`）：
 ```bash
-cd cli && npm test 2>&1 | grep -E "^# (tests|pass|fail)"; cd ..
+cd cli && npm test 2>&1 | grep -E "^(#|ℹ) (tests|pass|fail) "; cd ..
 ```
-Expected: `# fail 0`。记下 `# tests` 和 `# pass` 的数字，记作 N。若基线本身有失败，停下来告诉用户，不要在失败的基础上迁移。
+Expected: `fail 0`。记下 `tests` 和 `pass` 的数字，记作 N。若基线本身有失败，停下来告诉用户，不要在失败的基础上迁移。
 
 - [ ] **Step 2: 建根 package.json 与两个包的 package.json**
 
@@ -175,9 +175,9 @@ git rm -f cli/package-lock.json
 Run：
 ```bash
 npm install
-npm test 2>&1 | grep -E "^# (tests|pass|fail)"
+npm test 2>&1 | grep -E "^(#|ℹ) (tests|pass|fail) "
 ```
-Expected: 每个 workspace 的汇总里 `# fail 0`；各 workspace 的 `# tests` 之和等于 Step 1 的 N。若有测试因路径失败，只改路径，不改断言。常见原因：测试里读 `../templates`、`../package.json` 等相对路径。
+Expected: 每个 workspace 的汇总里 `fail 0`；各 workspace 的 `tests` 之和等于 Step 1 的 N。若有测试因路径失败，只改路径，不改断言。常见原因：测试里读 `../templates`、`../package.json` 等相对路径。
 
 - [ ] **Step 8: 检查点（不提交）**
 
@@ -307,7 +307,7 @@ export function makeEvent(type, data, { seq, time = new Date().toISOString() }) 
 - [ ] **Step 4: 运行，确认通过**
 
 Run: `npm test -w @agentteam/protocol`
-Expected: 5 个测试全部 PASS，`# fail 0`。
+Expected: 5 个测试全部 PASS，`fail 0`。
 
 - [ ] **Step 5: 检查点（不提交）**
 
@@ -1177,8 +1177,8 @@ Expected: 4 个测试 PASS。若"事件顺序"断言失败，先打印 `session.
 
 - [ ] **Step 5: 运行根目录全部测试**
 
-Run: `npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
-Expected: 所有 workspace `# fail 0`；旧测试总数不少于 Task 1 记录的 N。
+Run: `npm test 2>&1 | grep -E "^(#|ℹ) (tests|pass|fail) "`
+Expected: 所有 workspace `fail 0`；旧测试总数不少于 Task 1 记录的 N。
 
 - [ ] **Step 6: 检查点（不提交）**
 
@@ -1263,8 +1263,8 @@ Expected: 先出现至少一行 `[+…ms] "…"`（实时输出），最后一�
 
 - [ ] **Step 5: 最终全量测试**
 
-Run: `npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
-Expected: 全部 workspace `# fail 0`。
+Run: `npm test 2>&1 | grep -E "^(#|ℹ) (tests|pass|fail) "`
+Expected: 全部 workspace `fail 0`。
 
 - [ ] **Step 6: 检查点（不提交）**
 
