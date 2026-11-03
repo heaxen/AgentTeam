@@ -37,4 +37,4 @@
 ### B-007 重启后的"中断角色"标记
 - 背景：服务在角色运行中崩溃后，`events.jsonl` 里会留下没有终态事件（`role.finished` / `role.failed`）的 `role.started`。
 - 方案方向：web 客户端把"`running` 为 false 但存在未收尾的 `role.started`"显示为"已中断，可重试"；或由 core 在启动时补发一条终态事件。
-- 状态：未开始（随 web 计划处理）。
+- 状态：已实现（web 计划 Task 1：客户端把"running 为 false 但存在未收尾 role.started"显示为"已中断，可重试"）。

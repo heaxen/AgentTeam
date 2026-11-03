@@ -14,6 +14,7 @@
 | `stacks/_template.md` | 技术栈档案模板：每个项目填写一份，记录框架、目录、命令 |
 | `docs/使用说明.md` | 落地步骤与日常操作 |
 | `cli/` | 命令行工具 `agentteam`：在已有项目中初始化团队并调用模型 |
+| `apps/web` | Web 指挥台：Vite + React 纯客户端，只依赖 `@agentteam/protocol` |
 
 ## 快速开始
 

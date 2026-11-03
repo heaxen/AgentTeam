@@ -105,6 +105,8 @@ agentteam/
 
 同一项目同时只允许一个运行中的流程，第二个请求返回 409。所有请求的 `Host` 必须是本机地址，带 `Origin` 时必须是本机页面，否则返回 403（浏览器里的任意网页都能向 127.0.0.1 发请求，而服务能指挥带编辑权限的 agent）。请求体上限 64 KB。
 
+Web 客户端（`apps/web`）为纯展示层：状态与事件全部来自上述接口，操作全部转发给上述接口。开发启动 `npm run dev -w apps/web`；生产构建 `npm run build -w apps/web`，产物由 `packages/server --web apps/web/dist` 同源托管。界面分四区：流水线（五个角色的状态）、对话记录、角色输出流、输入区（需求 / 方案意见 / 继续 / 重试 / 暂停 / 取消）；右栏为角色分配（agent / 模型 / 强度）与认证。
+
 ## 5. 实时输出流
 
 - `runProcess` 增加可选参数 `onChunk(text)`，逐段转发 stdout。
