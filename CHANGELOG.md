@@ -44,6 +44,8 @@
 - 引擎新增：事件日志（`team/events.jsonl`，每条事件带递增序号，可按序号续传）、各 agent 的实时文本输出（适配器 `run` 新增可选参数 `onOutput`）、每个项目目录一个运行会话（`Session`，替代模块级暂停变量；工作流新增可注入的 `deps.shouldPause`，终端版的 `requestPause()` 不受影响）。
 - 新增 `packages/server`（`@agentteam/server`）：用 `node:http` 提供 `GET /api/state`、`GET /api/events`（SSE，可按 `seq` 续传）、`POST /api/message`、`POST /api/pause`、`POST /api/cancel`、`GET`/`PUT /api/roles`、`GET /api/agents`、`POST /api/auth/:agent`，并可托管 web 构建产物。只监听本机地址，校验 `Host` 与 `Origin`。启动方式：`node packages/server/bin/serve.js --root <项目目录> --port 4317`。`agentteam` 命令本身还没有接入这个服务，随 web 计划一起做。
 - 新增取消运行中的角色：`runProcess` 与各适配器、`dispatchTask` 接收可选的 `signal`，`Session.cancel()` 强制终止当前角色（backlog B-005）。
+- 新增 `apps/web`（`agentteam-web`）：Vite + React 的 Web 指挥台，只依赖 `@agentteam/protocol`。流水线视图（五个角色状态）、对话记录、角色输出流、输入区（需求 / 方案意见 / 继续 / 重试 / 暂停 / 取消）、角色分配（agent / 模型 / 强度）与认证。开发启动 `npm run dev -w apps/web`；e2e `npm run e2e -w apps/web`（用假派发，不调用真实 agent）。
+- 四个包的 `engines.node` 从 `>=18` 提升到 `>=22.12.0`：web 工具链（vite 8、vitest 5、jsdom 28）与取消 DeepSeek 在途请求所需的 `AbortSignal.any` 都要求这个下限。
 
 ### 说明
 - 已验证：claude 的流式输出用采集到的真实样本测了解析，并用真实 claude 经 `dispatchTask` 跑过一次只回答一句话的任务：`ok=true`，文本在进程结束前约 2 秒到达回调。这次只有一个文本块，没有验证多段输出连续到达，也没有验证带工具调用的运行。
@@ -51,7 +53,8 @@
 - 未验证：对话流程尚未用真实 agent 端到端跑通；交互界面（编号列表、masked 输入、各 agent 的登录启动）只在非交互环境测试过；codex 的 `-c model_reasoning_effort`、claude 的 `--effort`、deepseek 的 thinking 参数均未实跑。
 - 交付后的调整（A/B/C/D 类）推迟到下一版。
 - 未验证：server 的接口只用假 Session 和一次不调用 agent 的真实启动检查验证过；没有经 HTTP 驱动过真实 agent 的完整流程。取消对真实 claude 进程的效果也未实测。
-- 限制：取消 DeepSeek 的在途请求依赖 `AbortSignal.any`（Node 20.3 以上）。更旧的 Node 版本上取消只在下一轮请求前生效，不会中断已在进行的 HTTP 请求；`packages/server` 的 `engines` 仍写 `>=18`。
+- 限制：取消 DeepSeek 的在途请求依赖 `AbortSignal.any`（Node 20.3 以上）。更旧的 Node 版本上取消只在下一轮请求前生效，不会中断已在进行的 HTTP 请求；本项目已把四个包的 `engines.node` 统一提到 `>=22.12.0`，所以这个限制不再触发。
+- 未验证：Web 指挥台尚未与真实 agent 端到端跑通（e2e 的假派发全程被注入）；claude 的实时流式输出在浏览器里的实际表现也未实测。
 
 ## [0.5.0] - 2026-10-30
 
