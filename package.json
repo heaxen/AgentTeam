@@ -1,7 +1,7 @@
 {
   "name": "agentteam-workspace",
   "private": true,
-  "workspaces": ["cli", "packages/*"],
+  "workspaces": ["cli", "packages/*", "apps/*"],
   "scripts": {
     "postinstall": "npm run sync -w @agentteam/core",
     "test": "npm run sync -w @agentteam/core && npm test --workspaces --if-present"

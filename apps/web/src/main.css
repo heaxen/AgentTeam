@@ -1,0 +1,96 @@
+:root {
+  --bg: #0e1316;
+  --bg-raised: #162024;
+  --bg-hover: #1e2a2f;
+  --line: #26343a;
+  --text: #e8eee6;
+  --muted: #93a19a;
+  --faint: #5c6b63;
+  --brand: #5eb6a6;
+  --brand-text: #0b1712;
+  --error: #c77e74;
+  --done: #7fa8c0;
+  --focus-ring: #e0ec8a;
+  --mono: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 6px 10px;
+}
+
+button { cursor: pointer; }
+button:hover:not(:disabled) { background: var(--bg-hover); }
+button:disabled { color: var(--faint); cursor: not-allowed; }
+
+button.primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-text);
+  font-weight: 600;
+}
+
+:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* 页面框架：左主列（对话 → 输出 → 输入），右栏（流水线 → 设置）。窄屏改单列。 */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.app-title { font-weight: 600; }
+.app-conn { color: var(--muted); font-size: 12px; }
+.app-conn[data-status='live'] { color: var(--brand); }
+.app-conn[data-status='error'] { color: var(--error); }
+
+.app-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  flex: 1;
+  min-height: 0;
+}
+
+.app-main,
+.app-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-side { border-left: 1px solid var(--line); }
+
+@media (max-width: 900px) {
+  .app-body { grid-template-columns: minmax(0, 1fr); }
+  .app-side { border-left: none; border-top: 1px solid var(--line); }
+}

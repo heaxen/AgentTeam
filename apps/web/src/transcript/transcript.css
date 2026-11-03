@@ -1,0 +1,38 @@
+.transcript {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--bg-raised);
+}
+
+.transcript-body {
+  max-height: 38vh;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.transcript-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+.transcript-line {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 10px;
+  padding: 6px 0 6px 10px;
+  border-left: 2px solid var(--line);
+}
+
+.transcript-line + .transcript-line { margin-top: 4px; }
+
+.transcript-line.from-user { border-left-color: var(--brand); }
+
+.transcript-speaker {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.transcript-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

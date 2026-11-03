@@ -1,0 +1,51 @@
+.role-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.role-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.role-panel-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.role-panel-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.role-panel-status[data-status='running'] { color: var(--brand); }
+.role-panel-status[data-status='done'] { color: var(--done); }
+.role-panel-status[data-status='failed'],
+.role-panel-status[data-status='interrupted'] { color: var(--error); }
+
+.role-files {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.role-output {
+  flex: 1;
+  min-height: 160px;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.role-empty {
+  color: var(--muted);
+}
